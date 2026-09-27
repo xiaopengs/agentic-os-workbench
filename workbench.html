@@ -1,0 +1,1569 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Agentic OS · Automation Workbench</title>
+<!-- 本工作台通过 WorkBuddy「资料库」skill 搭建、存储和部署 -->
+<!-- 数据表：AgenticOS 工作流(N3dtSeMOGPwFHfX8C0TFtg) · AgenticOS Trace 记录(vyxhkufW37wdSjz8Tv3Zyz) -->
+<style>
+:root{
+  --bg:#f4f7f5; --card:#fff; --border:#edf1ef;
+  --shadow:0 1px 2px rgba(23,32,38,.04),0 4px 16px rgba(23,32,38,.04);
+  --green:#10b981; --green-deep:#059669; --green-bg:#e4f6ee;
+  --purple:#8b5cf6; --purple-bg:#f1ecfe;
+  --blue:#3b82f6; --blue-bg:#e8f0fe;
+  --cyan:#06b6d4; --cyan-bg:#e3f6fa;
+  --red:#ef4444; --red-bg:#fdecec;
+  --amber:#f59e0b; --amber-bg:#fdf3df;
+  --orange:#f97316; --orange-bg:#fef0e6;
+  --t1:#171c21; --t2:#64707a; --t3:#9aa5ae;
+  --r-card:16px; --r-el:10px; --r-pill:999px;
+  --font:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+  --mono:ui-monospace,"SF Mono",SFMono-Regular,Menlo,Consolas,monospace;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{font-family:var(--font);background:var(--bg);color:var(--t1);font-size:14px;line-height:1.5}
+button{font-family:inherit;border:0;background:none;cursor:pointer;color:inherit;font-size:13px}
+input,select{font-family:inherit;font-size:16px;color:var(--t1);outline:none}
+a{color:inherit;text-decoration:none;cursor:pointer}
+svg.ic{width:1em;height:1em;display:inline-block;vertical-align:-0.14em;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;flex:none}
+svg.ic.fill{fill:currentColor;stroke:none}
+
+/* ===== 顶部导航 ===== */
+.topnav{position:sticky;top:0;z-index:60;background:#fff;border-bottom:1px solid var(--border);height:60px;display:flex;align-items:center;gap:18px;padding:0 20px}
+.brand{display:flex;align-items:center;gap:9px;font-size:18px;font-weight:800;letter-spacing:-.2px;white-space:nowrap}
+.brand .logo{width:28px;height:28px;flex:none}
+.top-tabs{display:flex;align-items:center;gap:4px}
+.top-tabs button{padding:8px 15px;border-radius:var(--r-el);color:var(--t2);font-size:13.5px;font-weight:500;min-height:36px}
+.top-tabs button:hover{color:var(--t1)}
+.top-tabs button.active{background:#1a1f24;color:#fff;font-weight:600}
+.top-right{margin-left:auto;display:flex;align-items:center;gap:12px}
+.searchbox{display:flex;align-items:center;gap:8px;background:var(--bg);border-radius:var(--r-pill);padding:0 14px;height:38px;width:250px;color:var(--t3)}
+.searchbox input{border:0;background:none;width:100%;font-size:16px}
+.searchbox input::placeholder{color:var(--t3);font-size:13px}
+.env-wrap{position:relative}
+.env-picker{display:flex;align-items:center;gap:6px;padding:7px 10px;border-radius:var(--r-el);color:var(--t1);font-weight:600;font-size:13px;min-height:36px}
+.env-picker:hover{background:var(--bg)}
+.env-menu{display:none;position:absolute;right:0;top:44px;background:#fff;border-radius:12px;box-shadow:0 8px 30px rgba(23,32,38,.14);padding:6px;width:130px;z-index:70}
+.env-menu.open{display:block}
+.env-menu button{display:flex;width:100%;align-items:center;justify-content:space-between;padding:8px 10px;border-radius:8px;font-size:13px}
+.env-menu button:hover{background:var(--bg)}
+.env-menu button.on{color:var(--green-deep);font-weight:700}
+.bell-wrap{position:relative}
+.bell-btn{position:relative;width:38px;height:38px;border-radius:var(--r-el);display:flex;align-items:center;justify-content:center;color:var(--t2);font-size:19px}
+.bell-btn:hover{background:var(--bg)}
+.bell-btn .dot{position:absolute;top:8px;right:9px;width:7px;height:7px;border-radius:50%;background:var(--green);border:1.5px solid #fff}
+.bell-menu{display:none;position:absolute;right:0;top:46px;width:290px;background:#fff;border-radius:14px;box-shadow:0 8px 30px rgba(23,32,38,.14);padding:8px;z-index:70}
+.bell-menu.open{display:block}
+.bell-menu .bm-title{font-weight:700;font-size:13px;padding:6px 8px}
+.avatar{width:34px;height:34px;border-radius:50%;background:var(--green-bg);display:flex;align-items:center;justify-content:center;color:var(--green-deep);font-size:19px;flex:none}
+.hamburger{display:none;width:38px;height:38px;border-radius:var(--r-el);align-items:center;justify-content:center;font-size:20px;color:var(--t1)}
+
+/* ===== 三栏布局 ===== */
+.app{display:grid;grid-template-columns:206px minmax(0,1fr) 326px;gap:18px;padding:16px 22px 28px;max-width:1760px;margin:0 auto;align-items:start}
+.sidenav{background:#fff;border-radius:var(--r-card);box-shadow:var(--shadow);padding:10px;display:flex;flex-direction:column;gap:2px;position:sticky;top:76px;max-height:calc(100vh - 96px);overflow:auto}
+.sidenav button{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:var(--r-el);color:var(--t2);font-size:13px;font-weight:500;text-align:left;min-height:44px;width:100%}
+.sidenav button svg.ic{font-size:17px}
+.sidenav button:hover{background:var(--bg);color:var(--t1)}
+.sidenav button.active{background:var(--green-bg);color:var(--green-deep);font-weight:700}
+.side-brand{margin-top:auto;background:linear-gradient(150deg,#eef9f3,#e2f3ec);border-radius:14px;padding:16px 14px;text-align:center;position:relative;overflow:hidden}
+.side-brand .art{width:74px;height:74px;margin:2px auto 6px;display:block}
+.side-brand b{display:block;font-size:14px}
+.side-brand span{display:block;font-size:11px;color:var(--t2);margin-top:2px}
+.side-brand .dots{display:flex;gap:5px;justify-content:center;margin-top:10px}
+.side-brand .dots i{width:5px;height:5px;border-radius:50%;background:#c4d6cc}
+.side-brand .dots i.on{background:var(--green-deep);width:14px;border-radius:3px}
+.sidenav-mask{display:none}
+
+/* ===== 主区通用 ===== */
+.main{min-width:0}
+.page{display:none}
+.page.active{display:block;animation:pagein .25s ease}
+@keyframes pagein{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+.crumbs{font-size:12px;color:var(--t3);margin-bottom:8px}
+.page-head{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:18px}
+.page-head h1{font-size:29px;font-weight:800;letter-spacing:-.5px}
+.badge-green{background:var(--green-bg);color:var(--green-deep);font-size:12px;font-weight:600;padding:5px 12px;border-radius:var(--r-pill)}
+.sync-badge{margin-left:auto;font-size:12px;color:var(--t2);display:flex;align-items:center;gap:6px;background:#fff;border-radius:var(--r-pill);padding:5px 12px;box-shadow:var(--shadow)}
+.sync-badge .sdot{width:7px;height:7px;border-radius:50%;background:var(--green)}
+.sync-badge.syncing .sdot{background:var(--amber);animation:blink 1s infinite}
+.sync-badge.offline .sdot{background:var(--t3)}
+@keyframes blink{50%{opacity:.35}}
+.card{background:var(--card);border-radius:var(--r-card);box-shadow:var(--shadow);padding:18px 20px}
+.card-head{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:14px}
+.card-head b{font-size:16.5px;font-weight:800}
+.card-head .sub{font-size:12.5px;color:var(--t3)}
+.card-head .head-right{margin-left:auto;display:flex;align-items:center;gap:10px}
+.link-more{font-size:12.5px;color:var(--t2);display:flex;align-items:center;gap:3px}
+.link-more:hover{color:var(--green-deep)}
+
+/* ===== KPI ===== */
+.kpi-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:16px;margin-bottom:18px}
+.kpi-card{background:#fff;border-radius:var(--r-card);box-shadow:var(--shadow);padding:16px 18px;display:flex;gap:14px;align-items:center;cursor:pointer;position:relative;transition:transform .15s}
+.kpi-card:hover{transform:translateY(-2px)}
+.kpi-ic{width:46px;height:46px;border-radius:13px;display:flex;align-items:center;justify-content:center;font-size:22px;flex:none}
+.kpi-ic.g{background:var(--green-bg);color:var(--green-deep)}
+.kpi-ic.p{background:var(--purple-bg);color:var(--purple)}
+.kpi-ic.b{background:var(--blue-bg);color:var(--blue)}
+.kpi-ic.c{background:var(--cyan-bg);color:var(--cyan)}
+.kpi-mid{min-width:0}
+.kpi-label{font-size:12px;color:var(--t2)}
+.kpi-num-row{display:flex;align-items:baseline;gap:10px}
+.kpi-num{font-size:29px;font-weight:800;letter-spacing:-.5px;line-height:1.15}
+.kpi-trend{font-size:12px;font-weight:700;color:var(--green-deep)}
+.kpi-trend.flat{color:var(--t3);font-weight:500}
+.kpi-week{font-size:11px;color:var(--t3)}
+.kpi-go{position:absolute;right:14px;bottom:12px;color:var(--t3);font-size:14px}
+
+/* ===== Lifecycle ===== */
+.lifecycle-card{margin-bottom:18px;position:relative;overflow:hidden}
+.lc-deco{position:absolute;inset:0;pointer-events:none}
+.lc-flow{display:flex;justify-content:space-between;position:relative;z-index:1;padding:6px 4px 2px}
+.lc-node{display:flex;flex-direction:column;align-items:center;text-align:center;width:106px}
+.lc-ico{width:62px;height:62px;border-radius:50%;background:#fff;display:flex;align-items:center;justify-content:center;font-size:26px;position:relative;margin-bottom:10px}
+.lc-ico::before{content:"";position:absolute;inset:-7px;border-radius:50%;background:radial-gradient(closest-side,var(--ring,rgba(16,185,129,.16)),transparent 72%);z-index:-1}
+.lc-ico::after{content:"";position:absolute;inset:-8px;border-radius:50%;border:1.5px solid var(--ring2,rgba(16,185,129,.28))}
+.lc-ico.c-g{color:var(--green-deep);--ring:rgba(16,185,129,.18);--ring2:rgba(16,185,129,.30)}
+.lc-ico.c-p{color:var(--purple);--ring:rgba(139,92,246,.18);--ring2:rgba(139,92,246,.30)}
+.lc-ico.c-b{color:var(--blue);--ring:rgba(59,130,246,.18);--ring2:rgba(59,130,246,.30)}
+.lc-ico.c-dg{color:var(--green);--ring:rgba(5,150,105,.18);--ring2:rgba(5,150,105,.30)}
+.lc-name{font-size:13.5px;font-weight:700}
+.lc-desc{font-size:11px;color:var(--t3);line-height:1.45;margin-top:3px;white-space:nowrap}
+.lc-tag{margin-top:8px;font-size:11px;font-weight:600;padding:3px 10px;border-radius:var(--r-pill);display:flex;align-items:center;gap:5px}
+.lc-tag i{width:5px;height:5px;border-radius:50%;background:currentColor}
+.lc-tag.done{background:var(--green-bg);color:var(--green-deep)}
+.lc-tag.mock{background:var(--purple-bg);color:var(--purple)}
+.lc-tag.tests{background:var(--blue-bg);color:var(--blue)}
+.lc-tag.running{background:var(--green-bg);color:var(--green-deep)}
+.lc-tag.canary{background:var(--purple-bg);color:var(--purple)}
+.lc-arrow{align-self:flex-start;margin-top:22px;color:#c8d4cd;flex:none}
+
+/* ===== 两列区 ===== */
+.row-2col{display:grid;grid-template-columns:1.08fr .92fr;gap:16px;margin-bottom:18px;align-items:stretch}
+.env-pill{background:var(--green-bg);color:var(--green-deep);font-size:11.5px;font-weight:600;padding:4px 11px;border-radius:var(--r-pill);display:flex;align-items:center;gap:5px}
+.simlab-body{display:flex;gap:18px}
+.phone-col{flex:none;width:132px;display:flex;flex-direction:column;align-items:center;gap:8px}
+.phone{width:112px;height:224px;border-radius:24px;background:#10151a;padding:5px;box-shadow:0 10px 24px rgba(23,32,38,.18)}
+.phone-scr{width:100%;height:100%;border-radius:19px;background:linear-gradient(165deg,#c7b8f0 0%,#e8c9dd 55%,#f2e3d9 100%);position:relative;overflow:hidden}
+.phone-scr .ptime{position:absolute;top:10px;left:0;right:0;text-align:center;color:#fff;font-size:15px;font-weight:700;letter-spacing:.5px;text-shadow:0 1px 4px rgba(0,0,0,.18)}
+.phone-scr .pnotch{position:absolute;top:6px;left:50%;transform:translateX(-50%);width:34px;height:5px;border-radius:3px;background:rgba(16,21,26,.55)}
+.phone-scr .pbar{position:absolute;bottom:7px;left:14px;right:14px;height:4px;border-radius:2px;background:rgba(255,255,255,.5)}
+.phone-tag{font-size:10.5px;color:#fff;background:#2a3138;padding:3px 10px;border-radius:var(--r-pill);display:flex;align-items:center;gap:5px}
+.sim-right{flex:1;min-width:0;display:flex;flex-direction:column;gap:12px}
+.metric-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.metric{background:#f7faf8;border-radius:12px;padding:10px 12px}
+.metric .m-top{display:flex;align-items:center;gap:6px;font-size:11.5px;color:var(--t2)}
+.metric .m-top svg.ic{font-size:13px}
+.metric .m-num{font-size:20px;font-weight:800;letter-spacing:-.3px;margin-top:2px;display:flex;align-items:baseline;gap:7px}
+.metric .m-trend{font-size:11px;font-weight:700;color:var(--green-deep)}
+.prog-row{display:flex;gap:4px;justify-content:space-between;flex-wrap:wrap}
+.prog-item{display:flex;align-items:center;gap:5px;padding:5px 1px;min-height:40px}
+.prog-ico{width:24px;height:24px;flex:none;position:relative}
+.prog-ico .num{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:10.5px;font-weight:700}
+.prog-item .p-name{font-size:10.5px;color:var(--t2);line-height:1.3;white-space:nowrap}
+.prog-item .p-val{font-size:11px;font-weight:700}
+.prog-item.wait .p-val{color:var(--t3);font-weight:500}
+.sim-footer{display:flex;align-items:center;gap:9px;background:#f7faf8;border-radius:12px;padding:9px 10px;margin-top:14px;flex-wrap:wrap}
+.play-btn{width:38px;height:38px;border-radius:11px;background:var(--green);color:#fff;display:flex;align-items:center;justify-content:center;font-size:15px;flex:none}
+.sim-clock{font-family:var(--mono);font-size:14px;font-weight:700}
+.sim-state{font-size:11.5px;color:var(--t2);white-space:nowrap}
+.sim-bar{flex:1;min-width:56px;height:7px;border-radius:4px;background:#e2eae5;overflow:hidden}
+.sim-bar i{display:block;height:100%;border-radius:4px;background:linear-gradient(90deg,var(--green),#34d399);width:0%;transition:width .6s}
+.replay-btn{display:flex;align-items:center;gap:6px;background:#fff;border:1px solid var(--border);border-radius:var(--r-el);padding:8px 13px;font-size:12.5px;font-weight:600;min-height:38px}
+.replay-btn:hover{border-color:var(--green);color:var(--green-deep)}
+.more-btn{width:34px;height:34px;border-radius:var(--r-el);color:var(--t3);display:flex;align-items:center;justify-content:center}
+
+/* ===== Live Trace ===== */
+.trace-clock{font-family:var(--mono);font-size:13px;color:var(--t1);font-weight:600}
+.trace-list{display:flex;flex-direction:column;gap:9px;min-height:272px}
+.trace-row{display:flex;align-items:center;gap:11px;background:#f7faf8;border-radius:12px;padding:10px 12px;animation:fadein .4s ease}
+@keyframes fadein{from{opacity:0;transform:translateY(-5px)}to{opacity:1;transform:none}}
+.tr-ico{width:40px;height:40px;border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:18px;flex:none}
+.tr-ico.Agent{background:var(--green-bg);color:var(--green-deep)}
+.tr-ico.Skill{background:var(--purple-bg);color:var(--purple)}
+.tr-ico.Tool{background:var(--blue-bg);color:var(--blue)}
+.tr-ico.Contract{background:var(--cyan-bg);color:var(--cyan)}
+.tr-mid{min-width:0}
+.tr-type{font-size:10.5px;color:var(--t3)}
+.tr-name{font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tr-time{font-family:var(--mono);font-size:11.5px;color:var(--t3);flex:none}
+.tr-cost{font-size:12px;font-weight:700;flex:none;width:52px;text-align:right}
+.tr-bar{flex:1;min-width:46px;height:6px;border-radius:3px;background:#e6ede9;overflow:hidden}
+.tr-bar i{display:block;height:100%;border-radius:3px;background:linear-gradient(90deg,#a7e3cd,var(--green))}
+.tr-badge{flex:none;font-size:11px;font-weight:600;background:var(--green-bg);color:var(--green-deep);padding:3px 10px;border-radius:var(--r-pill)}
+.tr-badge.warn{background:var(--amber-bg);color:#b45309}
+.trace-more{display:flex;justify-content:center;font-size:12px;color:var(--t3);padding-top:11px}
+.empty-tip{padding:26px 10px;text-align:center;font-size:12.5px;color:var(--t3)}
+
+/* ===== Workflows ===== */
+.workflows-card{background:none;box-shadow:none;padding:0}
+.wf-top{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:13px}
+.wf-top b{font-size:16.5px;font-weight:800}
+.run-btn{display:flex;align-items:center;gap:6px;background:var(--green);color:#fff;border-radius:var(--r-el);padding:0 14px;height:36px;font-size:12.5px;font-weight:600}
+.run-btn:hover{background:var(--green-deep)}
+.wf-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}
+.wf-card{background:#fff;border-radius:var(--r-card);box-shadow:var(--shadow);padding:15px 16px;display:flex;flex-direction:column;gap:10px}
+.wf-head{display:flex;align-items:flex-start;gap:11px}
+.wf-ico{width:42px;height:42px;border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:19px;flex:none}
+.wf-ico.g{background:var(--green-bg);color:var(--green-deep)}
+.wf-ico.b{background:var(--blue-bg);color:var(--blue)}
+.wf-ico.o{background:var(--orange-bg);color:var(--orange)}
+.wf-title{font-size:13.5px;font-weight:700;line-height:1.3}
+.wf-cat{font-size:11px;color:var(--t3);margin-top:1px}
+.wf-status{margin-left:auto;font-size:11px;font-weight:600;padding:3px 9px;border-radius:var(--r-pill);display:flex;align-items:center;gap:5px;flex:none}
+.wf-status i{width:5px;height:5px;border-radius:50%;background:currentColor}
+.wf-status.running{background:var(--green-bg);color:var(--green-deep)}
+.wf-status.running i{animation:blink 1.2s infinite}
+.wf-status.done{background:#f1f4f2;color:var(--t2)}
+.wf-status.failed{background:var(--red-bg);color:var(--red)}
+.cap-ico.r{background:var(--red-bg);color:var(--red)}
+.cap-ico.a{background:var(--amber-bg);color:var(--amber)}
+.wf-meta{display:flex;gap:12px;flex-wrap:wrap;font-size:11.5px;color:var(--t2)}
+.wf-meta span{display:flex;align-items:center;gap:4px}
+.wf-foot{display:flex;align-items:center;gap:10px;margin-top:auto}
+.wf-bar{flex:1;height:5px;border-radius:3px;background:#eef2f0;overflow:hidden}
+.wf-bar i{display:block;height:100%;border-radius:3px;background:var(--green);transition:width .6s}
+.wf-dur{font-size:11px;color:var(--t3);flex:none}
+
+/* ===== 右侧栏 ===== */
+.aside{display:flex;flex-direction:column;gap:16px;min-width:0}
+.aside .card{padding:16px}
+.cop-head{display:flex;align-items:center;gap:10px;margin-bottom:13px}
+.bot-avatar{width:38px;height:38px;border-radius:50%;background:linear-gradient(140deg,#34d399,#0d9488);color:#fff;display:flex;align-items:center;justify-content:center;font-size:19px;flex:none}
+.cop-head b{font-size:15px;font-weight:800}
+.online-pill{display:flex;align-items:center;gap:5px;font-size:11px;color:var(--green-deep);font-weight:600}
+.online-pill i{width:6px;height:6px;border-radius:50%;background:var(--green)}
+.mini-more{margin-left:auto;color:var(--t3);width:28px;height:28px;display:flex;align-items:center;justify-content:center;border-radius:8px}
+.mini-more:hover{background:var(--bg)}
+.cop-grid{display:grid;grid-template-columns:1fr 1fr;gap:9px}
+.cop-btn{display:flex;align-items:center;justify-content:center;gap:8px;background:#fff;border:1px solid var(--border);border-radius:12px;padding:11px 12px;font-size:12.5px;font-weight:600;min-height:44px;box-shadow:0 1px 2px rgba(23,32,38,.03)}
+.cop-btn:hover{border-color:var(--green);color:var(--green-deep)}
+.cop-btn svg.ic{font-size:16px}
+.cop-btn.p{color:var(--purple)} .cop-btn.p:hover{border-color:var(--purple);color:var(--purple)}
+.cop-btn.b{color:var(--blue)} .cop-btn.b:hover{border-color:var(--blue);color:var(--blue)}
+.cop-btn.c{color:var(--cyan)} .cop-btn.c:hover{border-color:var(--cyan);color:var(--cyan)}
+.cop-btn.g{color:var(--green-deep)}
+.mini-head{display:flex;align-items:center;gap:8px;margin-bottom:12px}
+.mini-head b{font-size:14.5px;font-weight:800}
+.mini-head svg.ic{font-size:16px;color:var(--t1)}
+.count-pill{margin-left:auto;min-width:21px;height:21px;border-radius:var(--r-pill);background:#f1f4f2;color:var(--t2);font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;padding:0 6px}
+.attn-item{display:flex;align-items:center;gap:10px;padding:9px 2px;cursor:pointer}
+.attn-item + .attn-item{border-top:1px solid #f3f6f4}
+.attn-ico{width:30px;height:30px;border-radius:9px;display:flex;align-items:center;justify-content:center;font-size:14px;flex:none}
+.attn-ico.r{background:var(--red-bg);color:var(--red)}
+.attn-ico.g{background:var(--green-bg);color:var(--green-deep)}
+.attn-ico.a{background:var(--amber-bg);color:var(--amber)}
+.attn-txt{min-width:0}
+.attn-title{font-size:12.5px;font-weight:600;line-height:1.35}
+.attn-time{font-size:10.5px;color:var(--t3);margin-top:1px}
+.attn-item .chev{margin-left:auto;color:var(--t3);font-size:13px;flex:none}
+.steps{display:flex;flex-direction:column}
+.step{display:flex;gap:11px;position:relative;padding-bottom:16px}
+.step:last-child{padding-bottom:2px}
+.step::before{content:"";position:absolute;left:12px;top:26px;bottom:2px;border-left:2px dashed #dbe4de}
+.step:last-child::before{display:none}
+.step-ico{width:25px;height:25px;border-radius:50%;flex:none;display:flex;align-items:center;justify-content:center;font-size:11.5px;font-weight:700;position:relative;z-index:1;background:#fff}
+.step-ico.done{background:var(--green);color:#fff}
+.step-ico.doing{border:2px solid var(--green);color:var(--green-deep)}
+.step-ico.doing::after{content:"";position:absolute;inset:-2px;border-radius:50%;border:2px solid transparent;border-top-color:var(--green);animation:spin 1s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.step-ico.wait{border:1.6px solid #d7dfda;color:var(--t3)}
+.step-name{font-size:12.5px;font-weight:600;padding-top:3px}
+.step.wait .step-name{color:var(--t3);font-weight:500}
+.rel-body{display:flex;gap:12px;align-items:flex-start}
+.rel-left{flex:1;min-width:0}
+.rel-name-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:9px}
+.rel-name-row b{font-size:14.5px;font-weight:800}
+.ver-pill{font-size:10.5px;font-weight:600;background:var(--green-bg);color:var(--green-deep);padding:2px 9px;border-radius:var(--r-pill)}
+.rel-check{display:flex;align-items:center;gap:7px;font-size:12px;color:var(--t1);padding:3.5px 0}
+.rel-check svg.ic{font-size:14px;color:var(--green-deep);flex:none}
+.rel-check.muted{color:var(--t2)}
+.rel-check.muted svg.ic{color:var(--t3)}
+.rel-ring{flex:none;width:84px;text-align:center}
+.rel-ring svg{width:74px;height:74px;display:block;margin:0 auto}
+.rel-ring .rr-num{font-size:16px;font-weight:800;margin-top:-48px;pointer-events:none}
+.rel-ring .rr-cap{font-size:10.5px;color:var(--t3);margin-top:26px}
+.rel-btn{width:100%;height:44px;border-radius:12px;background:var(--green);color:#fff;font-size:13.5px;font-weight:700;display:flex;align-items:center;justify-content:center;gap:7px;margin-top:13px}
+.rel-btn:hover{background:var(--green-deep)}
+.q-mark{width:17px;height:17px;border-radius:50%;border:1.4px solid #d7dfda;color:var(--t3);font-size:10px;display:flex;align-items:center;justify-content:center;font-weight:600}
+
+/* ===== 能力域占位页 ===== */
+.cap-hero{background:linear-gradient(140deg,#ffffff, #eef8f3);border-radius:var(--r-card);box-shadow:var(--shadow);padding:24px 26px;margin-bottom:18px}
+.cap-hero h2{font-size:22px;font-weight:800;letter-spacing:-.3px}
+.cap-hero p{font-size:13px;color:var(--t2);margin-top:6px;max-width:760px}
+.cap-hero .cap-tags{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+.cap-tag{font-size:11.5px;background:#fff;border:1px solid var(--border);color:var(--t2);padding:4px 11px;border-radius:var(--r-pill)}
+.cap-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
+.cap-card{background:#fff;border-radius:var(--r-card);box-shadow:var(--shadow);padding:18px 20px;cursor:pointer;transition:transform .15s}
+.cap-card:hover{transform:translateY(-2px)}
+.cap-ico{width:42px;height:42px;border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:20px;margin-bottom:11px}
+.cap-card b{font-size:14.5px;font-weight:700;display:block}
+.cap-card p{font-size:12px;color:var(--t2);margin-top:5px;line-height:1.55}
+.cap-phase{display:inline-block;margin-top:10px;font-size:10.5px;color:var(--t3);background:#f1f4f2;padding:2px 9px;border-radius:var(--r-pill)}
+
+/* ===== Modal / Toast ===== */
+.modal{display:none;position:fixed;inset:0;z-index:100;background:rgba(15,23,28,.45);align-items:center;justify-content:center;padding:20px}
+.modal.open{display:flex}
+.modal-box{background:#fff;border-radius:18px;width:100%;max-width:520px;max-height:86vh;display:flex;flex-direction:column;overflow:hidden;animation:pagein .22s ease}
+.modal-head{display:flex;align-items:center;gap:10px;padding:15px 18px;border-bottom:1px solid var(--border)}
+.modal-head b{font-size:15px;font-weight:800}
+.modal-close{margin-left:auto;width:32px;height:32px;border-radius:9px;display:flex;align-items:center;justify-content:center;color:var(--t3);font-size:16px}
+.modal-close:hover{background:var(--bg)}
+.modal-body{padding:16px 18px;overflow-y:auto;flex:1}
+.chat-flow{display:flex;flex-direction:column;gap:10px}
+.msg{max-width:88%;padding:10px 13px;border-radius:14px;font-size:13px;line-height:1.6;white-space:pre-wrap;word-break:break-word}
+.msg.ai{background:var(--bg);border-top-left-radius:4px;align-self:flex-start}
+.msg.me{background:var(--green);color:#fff;border-top-right-radius:4px;align-self:flex-end}
+.msg .msg-card{background:#fff;border:1px solid var(--border);border-radius:10px;padding:10px 12px;margin-top:8px;font-size:12px;line-height:1.6}
+.msg .msg-card b{display:block;margin-bottom:4px}
+.chat-input{display:flex;gap:9px;padding:13px 16px;border-top:1px solid var(--border)}
+.chat-input input{flex:1;background:var(--bg);border:0;border-radius:12px;padding:11px 14px;font-size:16px;min-width:0}
+.send-btn{width:44px;height:44px;border-radius:12px;background:var(--green);color:#fff;display:flex;align-items:center;justify-content:center;font-size:17px;flex:none}
+.send-btn:hover{background:var(--green-deep)}
+.wf-form label{display:block;font-size:12px;color:var(--t2);font-weight:600;margin:12px 0 5px}
+.wf-form input,.wf-form select{width:100%;background:var(--bg);border:1px solid transparent;border-radius:10px;padding:11px 13px}
+.wf-form input:focus,.wf-form select:focus{border-color:var(--green)}
+.wf-form .form-row{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.primary-btn{width:100%;height:46px;border-radius:12px;background:var(--green);color:#fff;font-size:14px;font-weight:700;margin-top:18px}
+.primary-btn:hover{background:var(--green-deep)}
+.primary-btn[disabled]{opacity:.6;cursor:default}
+#toast{position:fixed;left:50%;bottom:30px;transform:translateX(-50%) translateY(20px);background:#1a1f24;color:#fff;font-size:13px;padding:11px 20px;border-radius:12px;opacity:0;pointer-events:none;transition:all .3s;z-index:200;max-width:86vw}
+#toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+
+/* ===== 响应式 ===== */
+@media (max-width:1360px){
+  .app{grid-template-columns:196px minmax(0,1fr) 300px}
+  .kpi-num{font-size:25px}
+}
+@media (max-width:1180px){
+  .app{grid-template-columns:196px minmax(0,1fr)}
+  .aside{grid-column:1 / -1;display:grid;grid-template-columns:1fr 1fr;align-items:start}
+  .row-2col{grid-template-columns:1fr}
+  .wf-grid{grid-template-columns:repeat(3,minmax(0,1fr))}
+}
+@media (max-width:900px){
+  .topnav{gap:10px;padding:0 14px}
+  .hamburger{display:flex}
+  .brand{font-size:16px}
+  .lc-desc{white-space:normal}
+  .top-tabs{display:none}
+  .searchbox{width:150px}
+  .app{grid-template-columns:1fr;padding:12px 14px 30px}
+  .sidenav{position:fixed;left:0;top:0;bottom:0;width:250px;max-height:none;z-index:90;border-radius:0 18px 18px 0;transform:translateX(-105%);transition:transform .25s}
+  .sidenav.open{transform:none}
+  .sidenav-mask{display:none;position:fixed;inset:0;background:rgba(15,23,28,.4);z-index:80}
+  .sidenav-mask.show{display:block}
+  .kpi-grid{grid-template-columns:1fr 1fr;gap:12px}
+  .wf-grid{grid-template-columns:1fr}
+  .aside{grid-template-columns:1fr}
+  .cap-grid{grid-template-columns:1fr}
+  .lc-flow{flex-direction:column;gap:14px;align-items:stretch}
+  .lc-node{width:100%;flex-direction:row;text-align:left;gap:13px}
+  .lc-arrow{display:none}
+  .lc-node .lc-txt{display:flex;flex-direction:column}
+  .lc-tag{align-self:flex-start;margin-top:6px}
+  .simlab-body{flex-direction:column;align-items:center}
+  .phone-col{width:100%}
+  .metric-grid{grid-template-columns:1fr 1fr}
+  .env-menu,.bell-menu{position:fixed;right:12px;left:auto}
+  .page-head h1{font-size:23px}
+}
+@media (max-width:520px){
+  .kpi-grid{grid-template-columns:1fr}
+  .metric-grid{grid-template-columns:1fr 1fr}
+  .searchbox{display:none}
+  .sim-footer{flex-wrap:wrap}
+  .prog-row{flex-direction:column;align-items:stretch}
+  .prog-item{padding:6px 4px}
+}
+</style>
+</head>
+<body>
+
+<svg style="display:none" xmlns="http://www.w3.org/2000/svg">
+  <symbol id="i-logo" viewBox="0 0 24 24"><path d="M12 3 21 19H3z" fill="url(#lg1)"/><path d="M12 9.5 16.8 19H7.2z" fill="#fff" opacity=".92"/><defs><linearGradient id="lg1" x1="0" y1="0" x2="24" y2="24"><stop offset="0" stop-color="#34d399"/><stop offset="1" stop-color="#059669"/></linearGradient></defs></symbol>
+  <symbol id="i-doc" viewBox="0 0 24 24"><path d="M7 3h7l4 4v14H7z"/><path d="M14 3v4h4"/><path d="M10 12h6M10 16h6"/></symbol>
+  <symbol id="i-cube" viewBox="0 0 24 24"><path d="M12 2.5 20.5 7v10L12 21.5 3.5 17V7z"/><path d="M3.5 7 12 11.5 20.5 7M12 11.5V21.5"/></symbol>
+  <symbol id="i-play" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9.2"/><path d="M10 8.6l5.4 3.4L10 15.4z" fill="currentColor" stroke="none"/></symbol>
+  <symbol id="i-device" viewBox="0 0 24 24"><rect x="7" y="2.5" width="10" height="19" rx="2.5"/><path d="M11 18.5h2"/></symbol>
+  <symbol id="i-bulb" viewBox="0 0 24 24"><path d="M9.5 18h5M10 21h4"/><path d="M12 3a6.2 6.2 0 0 1 3.6 11.2c-.8.6-1.1 1.2-1.1 2v.8h-5v-.8c0-.8-.3-1.4-1.1-2A6.2 6.2 0 0 1 12 3z"/></symbol>
+  <symbol id="i-bot" viewBox="0 0 24 24"><rect x="4" y="7.5" width="16" height="12" rx="3.5"/><path d="M12 7.5V4.5M12 4.5a1.4 1.4 0 1 0-.01-2.8 1.4 1.4 0 0 0 .01 2.8z"/><circle cx="9" cy="13" r="1.15" fill="currentColor" stroke="none"/><circle cx="15" cy="13" r="1.15" fill="currentColor" stroke="none"/><path d="M9.5 16.5h5"/></symbol>
+  <symbol id="i-monitor" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="13" rx="2.5"/><path d="M9 21h6M12 17v4"/></symbol>
+  <symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 2.8 20 6v6.2c0 4.6-3.2 7.6-8 9-4.8-1.4-8-4.4-8-9V6z"/><path d="M8.8 12l2.3 2.3 4.1-4.4"/></symbol>
+  <symbol id="i-list" viewBox="0 0 24 24"><rect x="4" y="3.5" width="16" height="17" rx="2.5"/><path d="M8 9h8M8 13h8M8 17h5"/></symbol>
+  <symbol id="i-phone" viewBox="0 0 24 24"><rect x="7" y="2.5" width="10" height="19" rx="2.5"/><path d="M11 18.5h2"/></symbol>
+  <symbol id="i-wave" viewBox="0 0 24 24"><path d="M3 12h3l2.4-6 3.2 12 2.8-9 1.8 3H21"/></symbol>
+  <symbol id="i-plane" viewBox="0 0 24 24"><path d="M21 3 3 10.5l6.2 2.6L11 19.5z"/><path d="M21 3 9.2 13.1"/></symbol>
+  <symbol id="i-book" viewBox="0 0 24 24"><path d="M4 5.5A2.5 2.5 0 0 1 6.5 3H20v15.5H6.5A2.5 2.5 0 0 0 4 21z"/><path d="M4 18.5A2.5 2.5 0 0 1 6.5 16H20"/></symbol>
+  <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="M20 20l-4.2-4.2"/></symbol>
+  <symbol id="i-bell" viewBox="0 0 24 24"><path d="M18 9.5a6 6 0 1 0-12 0c0 6-2.5 7-2.5 7h17S18 15.5 18 9.5"/><path d="M10 20a2.2 2.2 0 0 0 4 0"/></symbol>
+  <symbol id="i-target" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="4.5"/><circle cx="12" cy="12" r="1" fill="currentColor" stroke="none"/></symbol>
+  <symbol id="i-chev-d" viewBox="0 0 24 24"><path d="M6.5 9.5 12 15l5.5-5.5"/></symbol>
+  <symbol id="i-chev-r" viewBox="0 0 24 24"><path d="M9.5 6.5 15 12l-5.5 5.5"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></symbol>
+  <symbol id="i-warn" viewBox="0 0 24 24"><path d="M12 3.5 22 20H2z"/><path d="M12 10v4.5"/><circle cx="12" cy="17.2" r=".9" fill="currentColor" stroke="none"/></symbol>
+  <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4.2"/><path d="M12 2.5v2.4M12 19.1v2.4M2.5 12h2.4M19.1 12h2.4M5 5l1.7 1.7M17.3 17.3 19 19M19 5l-1.7 1.7M6.7 17.3 5 19"/></symbol>
+  <symbol id="i-bolt" viewBox="0 0 24 24"><path d="M13 2.5 4.5 13.5H11L9.8 21.5 19 10h-6.5z"/></symbol>
+  <symbol id="i-folder" viewBox="0 0 24 24"><path d="M3.5 6.5A2 2 0 0 1 5.5 4.5h4l2 2.5h7a2 2 0 0 1 2 2v8.5a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2z"/></symbol>
+  <symbol id="i-calendar" viewBox="0 0 24 24"><rect x="3.5" y="5" width="17" height="16" rx="2.5"/><path d="M3.5 10h17M8 2.8V7M16 2.8V7"/></symbol>
+  <symbol id="i-takeout" viewBox="0 0 24 24"><path d="M5 8h14l-1.2 12.2a1.8 1.8 0 0 1-1.8 1.6H8a1.8 1.8 0 0 1-1.8-1.6z"/><path d="M8.5 8V6.5a3.5 3.5 0 0 1 7 0V8"/></symbol>
+  <symbol id="i-water" viewBox="0 0 24 24"><path d="M12 3S5.8 10 5.8 14.4a6.2 6.2 0 0 0 12.4 0C18.2 10 12 3 12 3z"/></symbol>
+  <symbol id="i-chip" viewBox="0 0 24 24"><rect x="6.5" y="6.5" width="11" height="11" rx="2"/><rect x="10" y="10" width="4" height="4"/><path d="M9 3.5v3M15 3.5v3M9 17.5v3M15 17.5v3M3.5 9h3M3.5 15h3M17.5 9h3M17.5 15h3"/></symbol>
+  <symbol id="i-zap" viewBox="0 0 24 24"><path d="M13 2.5 4.5 13.5H11L9.8 21.5 19 10h-6.5z"/></symbol>
+  <symbol id="i-battery" viewBox="0 0 24 24"><rect x="2.5" y="8" width="17" height="8.5" rx="2"/><path d="M21.8 11v2.5"/><path d="M6 11v2.5M9.5 11v2.5"/></symbol>
+  <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M20 11a8 8 0 0 0-14.9-3M4 13a8 8 0 0 0 14.9 3"/><path d="M20 4.5V11h-6.5M4 19.5V13h6.5"/></symbol>
+  <symbol id="i-dots" viewBox="0 0 24 24"><circle cx="5" cy="12" r="1.4" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.4" fill="currentColor" stroke="none"/><circle cx="19" cy="12" r="1.4" fill="currentColor" stroke="none"/></symbol>
+  <symbol id="i-send" viewBox="0 0 24 24"><path d="M21 3 3 10.5l6.2 2.6L11 19.5z"/><path d="M21 3 9.2 13.1"/></symbol>
+  <symbol id="i-wrench" viewBox="0 0 24 24"><path d="M14.5 6.5a4.5 4.5 0 0 0-6 5.6L3 17.6 6.4 21l5.5-5.5a4.5 4.5 0 0 0 5.6-6L14 13l-3-3z"/></symbol>
+  <symbol id="i-x" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></symbol>
+  <symbol id="i-arrow-r" viewBox="0 0 24 24"><path d="M4 12h15M13.5 6.5 19 12l-5.5 5.5"/></symbol>
+  <symbol id="i-spark" viewBox="0 0 24 24"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"/><path d="M18.5 15.5l.9 2.6 2.6.9-2.6.9-.9 2.6-.9-2.6-2.6-.9 2.6-.9z"/></symbol>
+  <symbol id="i-trend-up" viewBox="0 0 24 24"><path d="M4 17l5.5-5.5 3.5 3.5L20 8"/><path d="M14.5 8H20v5.5"/></symbol>
+  <symbol id="i-menu" viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"/></symbol>
+  <symbol id="i-grid" viewBox="0 0 24 24"><rect x="4" y="4" width="7" height="7" rx="1.8"/><rect x="13" y="4" width="7" height="7" rx="1.8"/><rect x="4" y="13" width="7" height="7" rx="1.8"/><rect x="13" y="13" width="7" height="7" rx="1.8"/></symbol>
+</svg>
+
+<header class="topnav">
+  <button class="hamburger" id="hamburger" aria-label="菜单"><svg class="ic"><use href="#i-menu"/></svg></button>
+  <div class="brand"><svg class="logo" viewBox="0 0 24 24"><use href="#i-logo"/></svg>Agentic OS</div>
+  <nav class="top-tabs" id="topTabs">
+    <button data-nav="overview" class="active">工作台</button>
+    <button data-nav="cap-access">能力接入</button>
+    <button data-nav="cap-sim">仿真测试</button>
+    <button data-nav="cap-runtime">端侧 Runtime</button>
+    <button data-nav="cap-security">安全合规</button>
+    <button data-nav="cap-release">发布运营</button>
+  </nav>
+  <div class="top-right">
+    <div class="searchbox"><svg class="ic" style="font-size:15px"><use href="#i-search"/></svg><input id="globalSearch" placeholder="搜索 Agent / Skill / Contract / Trace"></div>
+    <div class="env-wrap">
+      <button class="env-picker" id="envPicker"><svg class="ic" style="font-size:15px;color:var(--green-deep)"><use href="#i-target"/></svg><span id="envLabel">Dev</span><svg class="ic" style="font-size:13px;color:var(--t3)"><use href="#i-chev-d"/></svg></button>
+      <div class="env-menu" id="envMenu">
+        <button data-env="Dev" class="on">Dev<svg class="ic" style="font-size:13px"><use href="#i-check"/></svg></button>
+        <button data-env="Test">Test</button>
+        <button data-env="Prod">Prod</button>
+      </div>
+    </div>
+    <div class="bell-wrap">
+      <button class="bell-btn" id="bellBtn" aria-label="通知"><svg class="ic"><use href="#i-bell"/></svg><i class="dot"></i></button>
+      <div class="bell-menu" id="bellMenu">
+        <div class="bm-title">通知 · Attention</div>
+        <div id="bellList"></div>
+      </div>
+    </div>
+    <div class="avatar"><svg class="ic"><use href="#i-bot"/></svg></div>
+  </div>
+</header>
+
+<div class="app">
+  <nav class="sidenav" id="sidenav">
+    <button data-nav="overview" class="active"><svg class="ic"><use href="#i-grid"/></svg>总览</button>
+    <button data-nav="cap-access" data-side="registry"><svg class="ic"><use href="#i-doc"/></svg>Contract Registry</button>
+    <button data-nav="cap-access" data-side="skills"><svg class="ic"><use href="#i-cube"/></svg>Skills</button>
+    <button data-nav="cap-access" data-side="agents"><svg class="ic"><use href="#i-bot"/></svg>Agents</button>
+    <button data-nav="cap-sim" data-side="scenarios"><svg class="ic"><use href="#i-list"/></svg>场景测试</button>
+    <button data-nav="cap-sim" data-side="devices"><svg class="ic"><use href="#i-phone"/></svg>真机集群</button>
+    <button data-nav="cap-sim" data-side="trace"><svg class="ic"><use href="#i-wave"/></svg>Trace</button>
+    <button data-nav="cap-security" data-side="security"><svg class="ic"><use href="#i-shield"/></svg>安全</button>
+    <button data-nav="cap-release" data-side="release"><svg class="ic"><use href="#i-plane"/></svg>发布</button>
+    <button data-nav="cap-knowledge" data-side="knowledge"><svg class="ic"><use href="#i-book"/></svg>知识库</button>
+    <div class="side-brand">
+      <svg class="art" viewBox="0 0 80 80">
+        <ellipse cx="40" cy="64" rx="24" ry="5" fill="#0ea371" opacity=".14"/>
+        <path d="M40 14 62 27v26L40 66 18 53V27z" fill="#fff" stroke="#0ea371" stroke-width="2.4" stroke-linejoin="round"/>
+        <path d="M18 27l22 13 22-13M40 40v26" stroke="#0ea371" stroke-width="2.4" stroke-linejoin="round" fill="none"/>
+        <circle cx="64" cy="18" r="4" fill="#34d399" opacity=".7"/>
+        <circle cx="14" cy="22" r="2.6" fill="#8b5cf6" opacity=".55"/>
+        <circle cx="68" cy="44" r="2.2" fill="#3b82f6" opacity=".5"/>
+      </svg>
+      <b>Agentic OS</b>
+      <span>让 AI 代理真正落地</span>
+      <div class="dots"><i class="on"></i><i></i><i></i></div>
+    </div>
+  </nav>
+  <div class="sidenav-mask" id="sidenavMask"></div>
+
+  <main class="main">
+    <!-- ============ 总览页 ============ -->
+    <section class="page active" id="page-overview">
+      <div class="crumbs">Agentic OS / 工作台</div>
+      <div class="page-head">
+        <h1>Automation Workbench</h1>
+        <span class="badge-green">全链路开发与验证</span>
+        <span class="sync-badge" id="syncBadge"><i class="sdot"></i><span id="syncText">已同步</span></span>
+      </div>
+
+      <div class="kpi-grid" id="kpiGrid">
+        <div class="kpi-card" data-nav="cap-access">
+          <div class="kpi-ic g"><svg class="ic"><use href="#i-doc"/></svg></div>
+          <div class="kpi-mid">
+            <div class="kpi-label">Contract</div>
+            <div class="kpi-num-row"><span class="kpi-num" id="kpiContract">128</span><span class="kpi-trend" id="kpiContractTrend">↑ 12%</span></div>
+            <div class="kpi-week">较上周</div>
+          </div>
+          <span class="kpi-go"><svg class="ic"><use href="#i-chev-r"/></svg></span>
+        </div>
+        <div class="kpi-card" data-nav="cap-access">
+          <div class="kpi-ic p"><svg class="ic"><use href="#i-cube"/></svg></div>
+          <div class="kpi-mid">
+            <div class="kpi-label">Skills</div>
+            <div class="kpi-num-row"><span class="kpi-num" id="kpiSkills">486</span><span class="kpi-trend" id="kpiSkillsTrend">↑ 8%</span></div>
+            <div class="kpi-week">较上周</div>
+          </div>
+          <span class="kpi-go"><svg class="ic"><use href="#i-chev-r"/></svg></span>
+        </div>
+        <div class="kpi-card" data-nav="cap-sim">
+          <div class="kpi-ic b"><svg class="ic"><use href="#i-play"/></svg></div>
+          <div class="kpi-mid">
+            <div class="kpi-label">Running Tests</div>
+            <div class="kpi-num-row"><span class="kpi-num" id="kpiTests">24</span><span class="kpi-trend" id="kpiTestsTrend">↑ 33%</span></div>
+            <div class="kpi-week">较上周</div>
+          </div>
+          <span class="kpi-go"><svg class="ic"><use href="#i-chev-r"/></svg></span>
+        </div>
+        <div class="kpi-card" data-nav="cap-sim">
+          <div class="kpi-ic c"><svg class="ic"><use href="#i-device"/></svg></div>
+          <div class="kpi-mid">
+            <div class="kpi-label">Devices</div>
+            <div class="kpi-num-row"><span class="kpi-num" id="kpiDevices">16</span><span class="kpi-trend flat" id="kpiDevicesTrend">↑ 0%</span></div>
+            <div class="kpi-week">较上周</div>
+          </div>
+          <span class="kpi-go"><svg class="ic"><use href="#i-chev-r"/></svg></span>
+        </div>
+      </div>
+
+      <div class="card lifecycle-card">
+        <div class="card-head"><b>Agent Lifecycle</b><span class="sub">从意图到发布全链路自动化</span></div>
+        <svg class="lc-deco" width="100%" height="100%" preserveAspectRatio="none" viewBox="0 0 1000 220">
+          <path d="M0 150 C 150 90, 260 190, 420 130 S 720 60, 1000 120" stroke="#bfe8d6" stroke-width="1.6" fill="none" opacity=".7"/>
+          <path d="M0 190 C 200 130, 380 210, 560 150 S 840 90, 1000 150" stroke="#d9f0e4" stroke-width="1.4" fill="none" opacity=".8"/>
+          <circle cx="120" cy="70" r="3.5" fill="#34d399" opacity=".5"/>
+          <circle cx="330" cy="46" r="2.6" fill="#8b5cf6" opacity=".45"/>
+          <circle cx="520" cy="72" r="3" fill="#3b82f6" opacity=".4"/>
+          <circle cx="700" cy="40" r="2.4" fill="#10b981" opacity=".5"/>
+          <circle cx="880" cy="66" r="3.2" fill="#34d399" opacity=".45"/>
+          <circle cx="240" cy="180" r="2.4" fill="#93c5fd" opacity=".5"/>
+          <circle cx="620" cy="188" r="2.8" fill="#6ee7b7" opacity=".55"/>
+          <circle cx="940" cy="180" r="2.4" fill="#c4b5fd" opacity=".5"/>
+        </svg>
+        <div class="lc-flow" id="lcFlow">
+          <div class="lc-node">
+            <div class="lc-ico c-g"><svg class="ic"><use href="#i-bulb"/></svg></div>
+            <div class="lc-txt"><div class="lc-name">Intent</div><div class="lc-desc">用户需求 / 任务目标</div><span class="lc-tag done"><i></i>已完成</span></div>
+          </div>
+          <svg class="lc-arrow" width="34" height="14" viewBox="0 0 34 14"><path d="M1 7h27M24 2.5 29 7l-5 4.5" stroke="currentColor" stroke-width="1.6" stroke-dasharray="4 3.5" fill="none" stroke-linecap="round"/></svg>
+          <div class="lc-node">
+            <div class="lc-ico c-g"><svg class="ic"><use href="#i-doc"/></svg></div>
+            <div class="lc-txt"><div class="lc-name">Contract</div><div class="lc-desc">契约定义 / 规范校验</div><span class="lc-tag done"><i></i>已完成</span></div>
+          </div>
+          <svg class="lc-arrow" width="34" height="14" viewBox="0 0 34 14"><path d="M1 7h27M24 2.5 29 7l-5 4.5" stroke="currentColor" stroke-width="1.6" stroke-dasharray="4 3.5" fill="none" stroke-linecap="round"/></svg>
+          <div class="lc-node">
+            <div class="lc-ico c-p"><svg class="ic"><use href="#i-cube"/></svg></div>
+            <div class="lc-txt"><div class="lc-name">Skill</div><div class="lc-desc">技能开发 / 单元测试</div><span class="lc-tag mock">Mock Ready</span></div>
+          </div>
+          <svg class="lc-arrow" width="34" height="14" viewBox="0 0 34 14"><path d="M1 7h27M24 2.5 29 7l-5 4.5" stroke="currentColor" stroke-width="1.6" stroke-dasharray="4 3.5" fill="none" stroke-linecap="round"/></svg>
+          <div class="lc-node">
+            <div class="lc-ico c-g"><svg class="ic"><use href="#i-bot"/></svg></div>
+            <div class="lc-txt"><div class="lc-name">Agent</div><div class="lc-desc">智能体编排 / 能力组合</div><span class="lc-tag tests">24 tests</span></div>
+          </div>
+          <svg class="lc-arrow" width="34" height="14" viewBox="0 0 34 14"><path d="M1 7h27M24 2.5 29 7l-5 4.5" stroke="currentColor" stroke-width="1.6" stroke-dasharray="4 3.5" fill="none" stroke-linecap="round"/></svg>
+          <div class="lc-node">
+            <div class="lc-ico c-b"><svg class="ic"><use href="#i-monitor"/></svg></div>
+            <div class="lc-txt"><div class="lc-name">Simulation</div><div class="lc-desc">场景仿真 / 结果验证</div><span class="lc-tag running" id="lcSimTag"><i></i>进行中</span></div>
+          </div>
+          <svg class="lc-arrow" width="34" height="14" viewBox="0 0 34 14"><path d="M1 7h27M24 2.5 29 7l-5 4.5" stroke="currentColor" stroke-width="1.6" stroke-dasharray="4 3.5" fill="none" stroke-linecap="round"/></svg>
+          <div class="lc-node">
+            <div class="lc-ico c-dg"><svg class="ic"><use href="#i-shield"/></svg></div>
+            <div class="lc-txt"><div class="lc-name">Secure Release</div><div class="lc-desc">安全扫描 / 灰度发布</div><span class="lc-tag canary" id="lcCanaryTag">Canary 10%</span></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="row-2col">
+        <div class="card simlab-card">
+          <div class="card-head">
+            <b>Simulation Lab</b><span class="sub">多端环境仿真 · 验证 Agent 真实表现</span>
+            <span class="head-right"><span class="env-pill"><svg class="ic" style="font-size:12px"><use href="#i-device"/></svg>Android 14 · Pixel 7</span></span>
+          </div>
+          <div class="simlab-body">
+            <div class="phone-col">
+              <div class="phone"><div class="phone-scr"><i class="pnotch"></i><div class="ptime" id="phoneTime">10:24</div><i class="pbar"></i></div></div>
+              <span class="phone-tag"><svg class="ic" style="font-size:11px"><use href="#i-device"/></svg>Pixel 7</span>
+            </div>
+            <div class="sim-right">
+              <div class="metric-grid">
+                <div class="metric"><div class="m-top"><svg class="ic" style="color:var(--cyan)"><use href="#i-water"/></svg>Memory</div><div class="m-num"><span id="mMemory">1.8GB</span><span class="m-trend" id="mMemoryTrend">↓ 18%</span></div></div>
+                <div class="metric"><div class="m-top"><svg class="ic" style="color:var(--purple)"><use href="#i-chip"/></svg>NPU</div><div class="m-num"><span id="mNpu">72%</span><span class="m-trend" id="mNpuTrend">↑ 6%</span></div></div>
+                <div class="metric"><div class="m-top"><svg class="ic" style="color:var(--blue)"><use href="#i-zap"/></svg>P95</div><div class="m-num"><span id="mP95">184ms</span><span class="m-trend" id="mP95Trend">↓ 22%</span></div></div>
+                <div class="metric"><div class="m-top"><svg class="ic" style="color:var(--green-deep)"><use href="#i-battery"/></svg>Power</div><div class="m-num"><span id="mPower">1.2W</span><span class="m-trend" id="mPowerTrend">↓ 15%</span></div></div>
+              </div>
+              <div class="prog-row" id="progRow"></div>
+            </div>
+          </div>
+          <div class="sim-footer">
+            <button class="play-btn" id="playBtn" aria-label="暂停/继续"><svg class="ic"><use href="#i-play"/></svg></button>
+            <span class="sim-clock" id="simClock">00:12:36</span>
+            <span class="sim-state" id="simState">运行中：场景回归测试</span>
+            <div class="sim-bar"><i id="simBar"></i></div>
+            <button class="replay-btn" id="replayBtn"><svg class="ic" style="font-size:14px"><use href="#i-refresh"/></svg>Replay DAG</button>
+            <button class="more-btn" id="simMore" aria-label="更多"><svg class="ic"><use href="#i-dots"/></svg></button>
+          </div>
+        </div>
+
+        <div class="card trace-card">
+          <div class="card-head">
+            <b>Live Trace</b><span class="sub">实时调用链路与性能分析</span>
+            <span class="head-right"><span class="trace-clock" id="traceClock">12:34:56</span>
+            <button class="mini-more" id="traceMore"><svg class="ic"><use href="#i-dots"/></svg></button></span>
+          </div>
+          <div class="trace-list" id="traceList">
+            <div class="trace-row"><div class="tr-ico Agent"><svg class="ic"><use href="#i-bot"/></svg></div><div class="tr-mid"><div class="tr-type" data-field="tr-type" data-sp-bindable="database" data-sp-database-id="vyxhkufW37wdSjz8Tv3Zyz">Agent</div><div class="tr-name" data-field="tr-name" data-sp-bindable="database" data-sp-database-id="vyxhkufW37wdSjz8Tv3Zyz">task_router</div></div><span class="tr-time" data-field="tr-time" data-sp-bindable="database" data-sp-database-id="vyxhkufW37wdSjz8Tv3Zyz">12:34:56</span><span class="tr-cost" data-field="tr-cost" data-sp-bindable="database" data-sp-database-id="vyxhkufW37wdSjz8Tv3Zyz">120ms</span><div class="tr-bar"><i style="width:56%"></i></div><span class="tr-badge" data-field="tr-status" data-sp-bindable="database" data-sp-database-id="vyxhkufW37wdSjz8Tv3Zyz">Success</span></div>
+            <div class="trace-row"><div class="tr-ico Skill"><svg class="ic"><use href="#i-cube"/></svg></div><div class="tr-mid"><div class="tr-type" data-field="tr-type" data-sp-bindable="database" data-sp-database-id="vyxhkufW37wdSjz8Tv3Zyz">Skill</div><div class="tr-name" data-field="tr-name" data-sp-bindable="database" data-sp-database-id="vyxhkufW37wdSjz8Tv3Zyz">file_transfer</div></div><span class="tr-time" data-field="tr-time" data-sp-bindable="database" data-sp-database-id="vyxhkufW37wdSjz8Tv3Zyz">12:34:58</span><span class="tr-cost" data-field="tr-cost" data-sp-bindable="database" data-sp-database-id="vyxhkufW37wdSjz8Tv3Zyz">86ms</span><div class="tr-bar"><i style="width:42%"></i></div><span class="tr-badge" data-field="tr-status" data-sp-bindable="database" data-sp-database-id="vyxhkufW37wdSjz8Tv3Zyz">Success</span></div>
+            <div class="trace-row"><div class="tr-ico Tool"><svg class="ic"><use href="#i-wrench"/></svg></div><div class="tr-mid"><div class="tr-type" data-field="tr-type" data-sp-bindable="database" data-sp-database-id="vyxhkufW37wdSjz8Tv3Zyz">Tool</div><div class="tr-name" data-field="tr-name" data-sp-bindable="database" data-sp-database-id="vyxhkufW37wdSjz8Tv3Zyz">android_file_api</div></div><span class="tr-time" data-field="tr-time" data-sp-bindable="database" data-sp-database-id="vyxhkufW37wdSjz8Tv3Zyz">12:35:02</span><span class="tr-cost" data-field="tr-cost" data-sp-bindable="database" data-sp-database-id="vyxhkufW37wdSjz8Tv3Zyz">64ms</span><div class="tr-bar"><i style="width:34%"></i></div><span class="tr-badge" data-field="tr-status" data-sp-bindable="database" data-sp-database-id="vyxhkufW37wdSjz8Tv3Zyz">Success</span></div>
+            <div class="trace-row"><div class="tr-ico Contract"><svg class="ic"><use href="#i-doc"/></svg></div><div class="tr-mid"><div class="tr-type" data-field="tr-type" data-sp-bindable="database" data-sp-database-id="vyxhkufW37wdSjz8Tv3Zyz">Contract</div><div class="tr-name" data-field="tr-name" data-sp-bindable="database" data-sp-database-id="vyxhkufW37wdSjz8Tv3Zyz">file_transfer_v2</div></div><span class="tr-time" data-field="tr-time" data-sp-bindable="database" data-sp-database-id="vyxhkufW37wdSjz8Tv3Zyz">12:35:06</span><span class="tr-cost" data-field="tr-cost" data-sp-bindable="database" data-sp-database-id="vyxhkufW37wdSjz8Tv3Zyz">48ms</span><div class="tr-bar"><i style="width:27%"></i></div><span class="tr-badge" data-field="tr-status" data-sp-bindable="database" data-sp-database-id="vyxhkufW37wdSjz8Tv3Zyz">Success</span></div>
+          </div>
+          <a class="trace-more" data-nav="cap-sim" data-side="trace">View full trace →</a>
+        </div>
+      </div>
+
+      <div class="workflows-card">
+        <div class="wf-top">
+          <b>Recent Workflows</b><span class="sub" style="font-size:12.5px;color:var(--t3)">最近执行的典型场景与工作流</span>
+          <span class="head-right" style="margin-left:auto;display:flex;gap:12px;align-items:center">
+            <a class="link-more" data-nav="cap-sim" data-side="scenarios">全部工作流 →</a>
+            <button class="run-btn" id="runWfBtn"><svg class="ic" style="font-size:13px"><use href="#i-play"/></svg>运行新工作流</button>
+          </span>
+        </div>
+        <div class="wf-grid" id="wfGrid">
+          <div class="wf-card"><div class="wf-head"><div class="wf-ico g"><svg class="ic"><use href="#i-folder"/></svg></div><div><div class="wf-title" data-field="wf-name" data-sp-bindable="database" data-sp-database-id="N3dtSeMOGPwFHfX8C0TFtg">跨设备文件流转</div><div class="wf-cat" data-field="wf-category" data-sp-bindable="database" data-sp-database-id="N3dtSeMOGPwFHfX8C0TFtg">手机 ↔ 电脑 · 文件同步</div><span data-field="wf-desc" data-sp-bindable="database" data-sp-database-id="N3dtSeMOGPwFHfX8C0TFtg" hidden>手机拍照后自动同步至 PC 端相册并按场景归档</span></div><span class="wf-status running" data-field="wf-status" data-sp-bindable="database" data-sp-database-id="N3dtSeMOGPwFHfX8C0TFtg"><i></i>运行中</span></div><div class="wf-meta"><span><svg class="ic"><use href="#i-device"/></svg><em data-field="wf-devices" data-sp-bindable="database" data-sp-database-id="N3dtSeMOGPwFHfX8C0TFtg" style="font-style:normal">3</em>&nbsp;设备</span><span><svg class="ic"><use href="#i-list"/></svg><em data-field="wf-steps" data-sp-bindable="database" data-sp-database-id="N3dtSeMOGPwFHfX8C0TFtg" style="font-style:normal">12</em>&nbsp;个步骤</span><span><svg class="ic"><use href="#i-target"/></svg>覆盖率&nbsp;<em data-field="wf-coverage" data-sp-bindable="database" data-sp-database-id="N3dtSeMOGPwFHfX8C0TFtg" style="font-style:normal">96</em>%</span></div><div class="wf-foot"><div class="wf-bar"><i style="width:96%"></i></div><span class="wf-dur">Regression <em data-field="wf-duration" data-sp-bindable="database" data-sp-database-id="N3dtSeMOGPwFHfX8C0TFtg" style="font-style:normal">18</em> min</span></div></div>
+          <div class="wf-card"><div class="wf-head"><div class="wf-ico b"><svg class="ic"><use href="#i-calendar"/></svg></div><div><div class="wf-title" data-field="wf-name" data-sp-bindable="database" data-sp-database-id="N3dtSeMOGPwFHfX8C0TFtg">日程冲突自动处理</div><div class="wf-cat" data-field="wf-category" data-sp-bindable="database" data-sp-database-id="N3dtSeMOGPwFHfX8C0TFtg">日程管理 · 智能调度</div><span data-field="wf-desc" data-sp-bindable="database" data-sp-database-id="N3dtSeMOGPwFHfX8C0TFtg" hidden>检测日程冲突并自动给出改期与请假建议</span></div><span class="wf-status done" data-field="wf-status" data-sp-bindable="database" data-sp-database-id="N3dtSeMOGPwFHfX8C0TFtg"><svg class="ic" style="font-size:11px"><use href="#i-check"/></svg>已完成</span></div><div class="wf-meta"><span><svg class="ic"><use href="#i-device"/></svg><em data-field="wf-devices" data-sp-bindable="database" data-sp-database-id="N3dtSeMOGPwFHfX8C0TFtg" style="font-style:normal">4</em>&nbsp;设备</span><span><svg class="ic"><use href="#i-list"/></svg><em data-field="wf-steps" data-sp-bindable="database" data-sp-database-id="N3dtSeMOGPwFHfX8C0TFtg" style="font-style:normal">8</em>&nbsp;个步骤</span><span><svg class="ic"><use href="#i-target"/></svg>覆盖率&nbsp;<em data-field="wf-coverage" data-sp-bindable="database" data-sp-database-id="N3dtSeMOGPwFHfX8C0TFtg" style="font-style:normal">93</em>%</span></div><div class="wf-foot"><div class="wf-bar"><i style="width:93%"></i></div><span class="wf-dur">Regression <em data-field="wf-duration" data-sp-bindable="database" data-sp-database-id="N3dtSeMOGPwFHfX8C0TFtg" style="font-style:normal">22</em> min</span></div></div>
+          <div class="wf-card"><div class="wf-head"><div class="wf-ico o"><svg class="ic"><use href="#i-takeout"/></svg></div><div><div class="wf-title" data-field="wf-name" data-sp-bindable="database" data-sp-database-id="N3dtSeMOGPwFHfX8C0TFtg">外卖点单 Agent</div><div class="wf-cat" data-field="wf-category" data-sp-bindable="database" data-sp-database-id="N3dtSeMOGPwFHfX8C0TFtg">生活服务 · 多平台比单</div><span data-field="wf-desc" data-sp-bindable="database" data-sp-database-id="N3dtSeMOGPwFHfX8C0TFtg" hidden>理解点单意图，多平台比价下单并跟踪配送</span></div><span class="wf-status done" data-field="wf-status" data-sp-bindable="database" data-sp-database-id="N3dtSeMOGPwFHfX8C0TFtg"><svg class="ic" style="font-size:11px"><use href="#i-check"/></svg>已完成</span></div><div class="wf-meta"><span><svg class="ic"><use href="#i-device"/></svg><em data-field="wf-devices" data-sp-bindable="database" data-sp-database-id="N3dtSeMOGPwFHfX8C0TFtg" style="font-style:normal">2</em>&nbsp;设备</span><span><svg class="ic"><use href="#i-list"/></svg><em data-field="wf-steps" data-sp-bindable="database" data-sp-database-id="N3dtSeMOGPwFHfX8C0TFtg" style="font-style:normal">6</em>&nbsp;个步骤</span><span><svg class="ic"><use href="#i-target"/></svg>覆盖率&nbsp;<em data-field="wf-coverage" data-sp-bindable="database" data-sp-database-id="N3dtSeMOGPwFHfX8C0TFtg" style="font-style:normal">90</em>%</span></div><div class="wf-foot"><div class="wf-bar"><i style="width:90%"></i></div><span class="wf-dur">Regression <em data-field="wf-duration" data-sp-bindable="database" data-sp-database-id="N3dtSeMOGPwFHfX8C0TFtg" style="font-style:normal">30</em> min</span></div></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ 能力域通用页（JS 渲染） ============ -->
+    <section class="page" id="page-generic">
+      <div class="crumbs" id="capCrumbs">Agentic OS / 能力接入</div>
+      <div class="cap-hero">
+        <h2 id="capTitle">能力接入</h2>
+        <p id="capDesc"></p>
+        <div class="cap-tags" id="capTags"></div>
+      </div>
+      <div class="cap-grid" id="capGrid"></div>
+    </section>
+  </main>
+
+  <aside class="aside">
+    <div class="card copilot-card">
+      <div class="cop-head">
+        <span class="bot-avatar"><svg class="ic"><use href="#i-bot"/></svg></span>
+        <b>AI Copilot</b>
+        <span class="online-pill"><i></i>Online</span>
+        <button class="mini-more" id="copMore"><svg class="ic"><use href="#i-dots"/></svg></button>
+      </div>
+      <div class="cop-grid">
+        <button class="cop-btn p" data-cop="skill"><svg class="ic"><use href="#i-cube"/></svg>生成 Skill</button>
+        <button class="cop-btn g" data-cop="contract"><svg class="ic"><use href="#i-doc"/></svg>生成 Contract</button>
+        <button class="cop-btn b" data-cop="regression"><svg class="ic"><use href="#i-play"/></svg>运行回归</button>
+        <button class="cop-btn c" data-cop="trace"><svg class="ic"><use href="#i-wave"/></svg>分析 Trace</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="mini-head"><svg class="ic"><use href="#i-bell"/></svg><b>Attention</b><span class="count-pill" id="attnCount">3</span></div>
+      <div id="attnList"></div>
+    </div>
+
+    <div class="card">
+      <div class="mini-head"><svg class="ic" style="color:var(--amber)"><use href="#i-bolt"/></svg><b>Next Step</b><span class="count-pill" id="stepCount">4</span></div>
+      <div class="steps" id="stepList"></div>
+    </div>
+
+    <div class="card">
+      <div class="mini-head">
+        <svg class="ic" style="color:var(--green-deep)"><use href="#i-shield"/></svg><b>Trusted Release</b><span class="q-mark">?</span>
+        <button class="mini-more" id="relMore"><svg class="ic"><use href="#i-dots"/></svg></button>
+      </div>
+      <div class="rel-body">
+        <div class="rel-left">
+          <div class="rel-name-row"><b>Skill v2.4.1</b><span class="ver-pill">版本发布</span></div>
+          <div class="rel-check"><svg class="ic"><use href="#i-check"/></svg>安全扫描 通过</div>
+          <div class="rel-check"><svg class="ic"><use href="#i-check"/></svg>兼容性检查 通过</div>
+          <div class="rel-check muted" id="relCanaryLine"><svg class="ic"><use href="#i-refresh"/></svg><span id="relCanaryText">灰度发布 进行中 (10%)</span></div>
+        </div>
+        <div class="rel-ring">
+          <svg viewBox="0 0 84 84">
+            <circle cx="42" cy="42" r="35" fill="none" stroke="#eef2f0" stroke-width="9"/>
+            <circle id="canaryArc" cx="42" cy="42" r="35" fill="none" stroke="#10b981" stroke-width="9" stroke-linecap="round" stroke-dasharray="219.9" stroke-dashoffset="197.9" transform="rotate(-90 42 42)"/>
+          </svg>
+          <div class="rr-num" id="canaryNum">10%</div>
+          <div class="rr-cap">Canary</div>
+        </div>
+      </div>
+      <button class="rel-btn" id="relDetailBtn">查看发布详情<svg class="ic" style="font-size:14px"><use href="#i-arrow-r"/></svg></button>
+    </div>
+  </aside>
+</div>
+
+<!-- AI Copilot 对话面板 -->
+<div class="modal" id="copilotModal">
+  <div class="modal-box">
+    <div class="modal-head">
+      <span class="bot-avatar" style="width:32px;height:32px;font-size:16px"><svg class="ic"><use href="#i-bot"/></svg></span>
+      <b id="copModalTitle">AI Copilot</b>
+      <button class="modal-close" data-close="copilotModal"><svg class="ic"><use href="#i-x"/></svg></button>
+    </div>
+    <div class="modal-body"><div class="chat-flow" id="chatFlow"></div></div>
+    <div class="chat-input">
+      <input id="chatInput" placeholder="描述你的需求，例如：帮我生成文件传输 Skill…">
+      <button class="send-btn" id="chatSend"><svg class="ic"><use href="#i-send"/></svg></button>
+    </div>
+  </div>
+</div>
+
+<!-- 运行新工作流 -->
+<div class="modal" id="wfModal">
+  <div class="modal-box">
+    <div class="modal-head"><b>运行新工作流</b><button class="modal-close" data-close="wfModal"><svg class="ic"><use href="#i-x"/></svg></button></div>
+    <div class="modal-body">
+      <form class="wf-form" id="wfForm">
+        <label for="fTpl">场景模板</label>
+        <select id="fTpl" name="wf-tpl">
+          <option value="">请选择</option>
+          <option value="msg">消息智能摘要 Agent</option>
+          <option value="album">相册整理 Agent</option>
+          <option value="meeting">会议纪要生成 Agent</option>
+        </select>
+        <label for="fName">工作流名称</label>
+        <input id="fName" name="wf-name" required placeholder="如：消息智能摘要 Agent">
+        <div class="form-row">
+          <div><label for="fCat">分类</label><input id="fCat" name="wf-category" required placeholder="如 效率工具"></div>
+          <div><label for="fStatus">状态</label>
+            <select id="fStatus" name="wf-status"><option value="">请选择</option></select>
+          </div>
+        </div>
+        <label for="fDesc">描述</label>
+        <input id="fDesc" name="wf-desc" placeholder="一句话描述工作流目标">
+        <div class="form-row">
+          <div><label for="fDev">设备数</label><input id="fDev" name="wf-devices" type="number" min="1" max="16" required></div>
+          <div><label for="fStep">步骤数</label><input id="fStep" name="wf-steps" type="number" min="1" max="99" required></div>
+        </div>
+        <div class="form-row">
+          <div><label for="fCov">覆盖率 (%)</label><input id="fCov" name="wf-coverage" type="number" min="0" max="100" required></div>
+          <div><label for="fDur">回归时长 (分)</label><input id="fDur" name="wf-duration" type="number" min="1" max="120" required></div>
+        </div>
+        <button class="primary-btn" type="submit" id="wfSubmit">启动工作流</button>
+      </form>
+    </div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+(function(){
+'use strict';
+/* ================= 常量与演示数据 ================= */
+var DB_WF = 'N3dtSeMOGPwFHfX8C0TFtg';   /* AgenticOS 工作流 */
+var DB_TR = 'vyxhkufW37wdSjz8Tv3Zyz';   /* AgenticOS Trace 记录 */
+var LS_PREFIX = 'wb_agentic_os_';
+
+var DEMO_WORKFLOWS = [
+  { name:'跨设备文件流转', cat:'手机 ↔ 电脑 · 文件同步', desc:'手机拍照后自动同步至 PC 端相册并按场景归档',
+    devices:3, steps:12, coverage:96, duration:18, status:'运行中' },
+  { name:'日程冲突自动处理', cat:'日程管理 · 智能调度', desc:'检测日程冲突并自动给出改期与请假建议',
+    devices:4, steps:8, coverage:93, duration:22, status:'已完成' },
+  { name:'外卖点单 Agent', cat:'生活服务 · 多平台比单', desc:'理解点单意图，多平台比价下单并跟踪配送',
+    devices:2, steps:6, coverage:90, duration:30, status:'已完成' }
+];
+var DEMO_TRACES = [
+  { type:'Agent',    name:'task_router',       cost:120, status:'Success', time:'12:34:56' },
+  { type:'Skill',    name:'file_transfer',     cost:86,  status:'Success', time:'12:34:58' },
+  { type:'Tool',     name:'android_file_api',  cost:64,  status:'Success', time:'12:35:02' },
+  { type:'Contract', name:'file_transfer_v2',  cost:48,  status:'Success', time:'12:35:06' }
+];
+var TRACE_POOL = {
+  Agent:    ['task_router','intent_parser','route_plan','agent_orchestrator','memory_recall'],
+  Skill:    ['file_transfer','calendar_check','poi_search','text_summarize','album_classify'],
+  Tool:     ['android_file_api','calendar_api','npu_infer','location_api','ocr_engine'],
+  Contract: ['file_transfer_v2','calendar_v1','payment_confirm_v1','privacy_guard_v1']
+};
+var WF_TPL = {
+  msg:     { name:'消息智能摘要 Agent', cat:'效率工具 · 信息聚合', desc:'聚合未读消息并生成摘要与待办', devices:2, steps:7,  coverage:0,  duration:12 },
+  album:   { name:'相册整理 Agent',     cat:'生活服务 · 图像管理', desc:'按人物/场景自动归类相册并去重', devices:3, steps:9,  coverage:0,  duration:16 },
+  meeting: { name:'会议纪要生成 Agent', cat:'办公协同 · 语音转写', desc:'转写会议录音并生成纪要与行动项', devices:4, steps:10, coverage:0,  duration:20 }
+};
+var ATTN_DEMO = [
+  { tone:'r', icon:'i-warn',  title:'Contract 变更影响 3 个 Skill', time:'2小时前' },
+  { tone:'g', icon:'i-check', title:'Skill v1.8 安全验证完成',      time:'4小时前' },
+  { tone:'a', icon:'i-sun',   title:'NPU 延迟超过 P95 基线',        time:'5小时前' }
+];
+var SORT_FIELD_WF='更新时间';   /* 工作流表排序字段（以该表 schema 为准） */
+/* select 选项（建表服务端确认的 id；运行时优先以 getSchema 返回为准） */
+var OPT = {
+  wfStatus:{ '运行中':'ko9zgYhx5eA7aXis', '已完成':'awBOIzOfZqsAwa2v', '失败':'BS2D2PHqObVSKuXy' },
+  trType:  { 'Agent':'kbTYhR3dptLxsPDN', 'Skill':'41tQexPaoH0bUuRe', 'Tool':'uRfS0d5s0DJWBRxn', 'Contract':'nWU3jjrcVRBWPt4k' },
+  trStatus:{ 'Success':'Zul4vvlDxZMa8seD', 'Failed':'VCN7ekLV8ebWNMHm', 'Running':'qslgXaUx1lPBKeBD' }
+};
+
+/* ================= 状态（唯一可变状态源） ================= */
+var state = {
+  activePage:'overview',
+  sdk:false,            /* 资料库 SDK 是否可用 */
+  sync:'offline',       /* ok | syncing | offline */
+  kpi:{ contract:128, skills:486, tests:24, devices:16 },
+  sim:{
+    sec:756,            /* 00:12:36 */
+    running:true,
+    prog:[
+      { name:'编译构建', done:2,  total:2  },
+      { name:'单元测试', done:24, total:24 },
+      { name:'性能测试', done:12, total:16 },
+      { name:'场景回归', done:8,  total:12 },
+      { name:'结果分析', done:0,  total:1, wait:true }
+    ],
+    metrics:{ memory:1.8, npu:72, p95:184, power:1.2 },
+    idleRounds:0
+  },
+  traceSec: 45296,      /* 12:34:56 */
+  phoneSec: 37440,      /* 手机屏显 10:24 独立走时 */
+  traces: JSON.parse(JSON.stringify(DEMO_TRACES)),   /* 首屏预填演示数据，SDK 数据到达后覆盖 */
+  workflows: JSON.parse(JSON.stringify(DEMO_WORKFLOWS)),
+  nextStep:[
+    { name:'Mock 联调', st:'done'  },
+    { name:'场景回归', st:'doing' },
+    { name:'安全扫描', st:'wait'  },
+    { name:'灰度发布', st:'wait'  }
+  ],
+  canary:10,
+  copLog:{}             /* {kind:[{who,html}]} */
+};
+
+/* ================= 工具函数 ================= */
+function $(id){ return document.getElementById(id); }
+function escapeHtml(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+/* innerHTML 集中注入通道：所有动态插值均已逐项 escapeHtml 转义或为受限数值 */
+function sanitizeHtml(html){ return String(html); }
+function pad(n){ return (n<10?'0':'')+n; }
+function fmtHMS(sec){ sec=((sec%86400)+86400)%86400; return pad(Math.floor(sec/3600))+':'+pad(Math.floor(sec%3600/60))+':'+pad(sec%60); }
+function fmtMS(sec){ sec=((sec%86400)+86400)%86400; return pad(Math.floor(sec/3600))+':'+pad(Math.floor(sec%3600/60)); }
+function rand(a,b){ return a+Math.floor(Math.random()*(b-a+1)); }
+function toast(msg){
+  var t=$('toast'); if(!t) return;
+  t.textContent=msg; t.className='show';
+  clearTimeout(t._tm); t._tm=setTimeout(function(){ t.className=''; },2400);
+}
+function lsGet(k){ try{ return localStorage.getItem(LS_PREFIX+k); }catch(e){ return null; } }
+function lsSet(k,v){ try{ localStorage.setItem(LS_PREFIX+k,v); }catch(e){} }
+
+/* ================= 数据接入层 DataBridge ================= */
+var DataBridge = {
+  wfOptions:[], trOptions:[],
+  detect:function(){
+    try{ state.sdk = !!(window.__SMART_PAGE__ && window.__SMART_PAGE__.database && window.__SMART_PAGE__.database.query); }
+    catch(e){ state.sdk=false; }
+  },
+  init:function(){
+    this.detect();
+    if(!state.sdk){
+      state.workflows = JSON.parse(JSON.stringify(DEMO_WORKFLOWS));
+      state.traces = JSON.parse(JSON.stringify(DEMO_TRACES));
+      state.sync='offline'; refreshAll(); return;
+    }
+    state.sync='syncing'; renderSyncBadge();
+    var db=window.__SMART_PAGE__.database, self=this;
+    var schemaJobs = [
+      db.getSchema({databaseId:'N3dtSeMOGPwFHfX8C0TFtg'}).then(function(s){ self.wfOptions=self.pickOptions(s); }).catch(function(){}),
+      db.getSchema({databaseId:'vyxhkufW37wdSjz8Tv3Zyz'}).then(function(s){ self.trOptions=self.pickOptions(s); }).catch(function(){})
+    ];
+    var loadWf = this.loadWorkflows().then(function(rows){
+      state.workflows = rows.length?rows:JSON.parse(JSON.stringify(DEMO_WORKFLOWS));
+    }).catch(function(){ state.workflows=JSON.parse(JSON.stringify(DEMO_WORKFLOWS)); state.sync='offline'; });
+    var loadTr = this.loadTraces().then(function(rows){
+      state.traces = rows.length?rows.slice(-6).reverse():JSON.parse(JSON.stringify(DEMO_TRACES));
+    }).catch(function(){ state.traces=JSON.parse(JSON.stringify(DEMO_TRACES)); state.sync='offline'; });
+    Promise.all(schemaJobs).then(function(){ self.fillStatusSelect(); });
+    Promise.all([loadWf,loadTr]).then(function(){
+      if(state.sync!=='offline') state.sync='ok';
+      refreshAll();
+    });
+  },
+  pickOptions:function(schema){
+    var map={};
+    (schema&&schema.properties||[]).forEach(function(f){
+      if((f.type==='select') && f.config && f.config.options){ map[f.name]=f.config.options; }
+    });
+    return map;
+  },
+  loadWorkflows:function(){
+    var db=window.__SMART_PAGE__.database;
+    function page(cursor, acc, guard){
+      acc=acc||[]; guard=guard||0;
+      if(guard>100){ return Promise.resolve(acc); }
+      return db.query({
+        databaseId:'N3dtSeMOGPwFHfX8C0TFtg',
+        sorts:[{property:SORT_FIELD_WF, direction:'descending'}],
+        pageSize:200,
+        startCursor:cursor
+      }).then(function(res){
+        acc=acc.concat(res.results||[]);
+        var next=res.nextCursor;
+        if(res.hasMore && next && next!==cursor && (res.results||[]).length){ return page(next,acc,guard+1); }
+        return acc;
+      }).catch(function(err){ console.warn('[database] 工作流查询失败', err); throw err; });
+    }
+    return page(undefined,[],0).then(function(rows){
+      return rows.map(function(r){
+        return { name:str(r['工作流名称']), cat:str(r['分类']), desc:str(r['描述']),
+          devices:num(r['设备数']), steps:num(r['步骤数']), coverage:num(r['覆盖率']),
+          duration:num(r['回归时长分']), status:str(r['状态'])||'已完成' };
+      });
+    });
+  },
+  loadTraces:function(){
+    var db=window.__SMART_PAGE__.database;
+    function page(cursor, acc, guard){
+      acc=acc||[]; guard=guard||0;
+      if(guard>100){ return Promise.resolve(acc); }
+      return db.query({
+        databaseId:'vyxhkufW37wdSjz8Tv3Zyz',
+        pageSize:50,
+        startCursor:cursor
+      }).then(function(res){
+        acc=acc.concat(res.results||[]);
+        var next=res.nextCursor;
+        if(res.hasMore && next && next!==cursor && (res.results||[]).length){ return page(next,acc,guard+1); }
+        return acc;
+      }).catch(function(err){ console.warn('[database] trace 查询失败', err); throw err; });
+    }
+    return page(undefined,[],0).then(function(rows){
+      return rows.map(function(r){
+        return { type:str(r['Span类型'])||'Tool', name:str(r['Span名称']),
+          cost:num(r['耗时ms'])||80, status:str(r['状态'])||'Success', time:str(r['时间戳']) };
+      });
+    });
+  },
+  addWorkflow:function(rec){
+    if(!state.sdk){ return Promise.resolve(false); }
+    var db=window.__SMART_PAGE__.database;
+    var properties={
+      '工作流名称':{ text:rec.name },
+      '分类':{ text:rec.cat },
+      '描述':{ text:rec.desc||'' },
+      '设备数':{ number:rec.devices },
+      '步骤数':{ number:rec.steps },
+      '覆盖率':{ number:rec.coverage },
+      '回归时长分':{ number:rec.duration },
+      '状态':{ select: OPT.wfStatus[rec.status] || rec.status },
+      '更新时间':{ date:new Date().toISOString() }
+    };
+    return db.addRecord({databaseId:'N3dtSeMOGPwFHfX8C0TFtg', properties:properties})
+      .then(function(){ return true; })
+      .catch(function(e){ console.warn('[database] 工作流写入失败', e); return false; });
+  },
+  addTrace:function(span){
+    if(!state.sdk){ return; }
+    var db=window.__SMART_PAGE__.database;
+    var properties={
+      'Span名称':{ text:span.name },
+      'Span类型':{ select: OPT.trType[span.type] || span.type },
+      '耗时ms':{ number:span.cost },
+      '状态':{ select: OPT.trStatus[span.status] || span.status },
+      '时间戳':{ text:span.time }
+    };
+    try{
+      db.addRecord({databaseId:'vyxhkufW37wdSjz8Tv3Zyz', properties:properties})
+        .catch(function(e){ console.warn('[database] trace 写入失败', e); });
+    }catch(e){ console.warn('[database] trace 写入异常', e); }
+  },
+  fillStatusSelect:function(){
+    var sel=$('fStatus'); if(!sel) return;
+    var opts = (this.wfOptions['状态']) || [{id:OPT.wfStatus['运行中'],text:'运行中'},{id:OPT.wfStatus['已完成'],text:'已完成'},{id:OPT.wfStatus['失败'],text:'失败'}];
+    var html='<option value="">请选择</option>';
+    opts.forEach(function(o){ html+='<option value="'+escapeHtml(o.id)+'">'+escapeHtml(o.text)+'</option>'; });
+    sel.innerHTML=sanitizeHtml(html);
+    sel.value = OPT.wfStatus['运行中'];
+  }
+};
+function str(v){ if(v==null) return ''; if(typeof v==='object'){ return v.text||v.name||''; } return String(v); }
+function num(v){ var n=Number(v); return isNaN(n)?0:n; }
+
+/* ================= 模拟引擎 Engine ================= */
+var Engine = {
+  start:function(){
+    var self=this;
+    setInterval(function(){ self.tickClock(); }, 1000);
+    setInterval(function(){ self.tickTrace(); }, 4000);
+    setInterval(function(){ self.tickProgress(); }, 2500);
+  },
+  tickClock:function(){
+    state.traceSec=(state.traceSec+1)%86400;
+    state.phoneSec=(state.phoneSec+1)%86400;
+    if(state.sim.running){ state.sim.sec++; }
+    updateClockDom();
+  },
+  tickTrace:function(){
+    if(state.activePage!=='overview'){ return; }
+    var types=['Agent','Skill','Tool','Contract'];
+    var t=types[rand(0,3)], pool=TRACE_POOL[t];
+    var span={ type:t, name:pool[rand(0,pool.length-1)], cost:rand(40,220), status:'Success', time:fmtHMS(state.traceSec) };
+    state.traces.unshift(span);
+    if(state.traces.length>6){ state.traces.length=6; }
+    DataBridge.addTrace(span);
+    renderTrace();
+  },
+  tickProgress:function(){
+    if(state.activePage!=='overview'){ return; }
+    var p=state.sim.prog, idx=-1, i;
+    for(i=0;i<p.length;i++){ if(!p[i].wait && p[i].done<p[i].total){ idx=i; break; } }
+    if(idx>=0){
+      p[idx].done += (idx===2 ? rand(1,2) : 1);
+      if(p[idx].done>p[idx].total){ p[idx].done=p[idx].total; }
+    } else if(p[4].wait){
+      p[4].wait=false; p[4].done=0;
+    } else {
+      state.sim.idleRounds++;
+      advanceNextStep(state.sim.idleRounds);
+      if(state.sim.idleRounds>=8){ resetSimRound(); }   /* 自动开启下一轮仿真 */
+    }
+    if(state.nextStep[3].st==='doing' && state.sim.idleRounds>=4 && state.sim.idleRounds%3===0){
+      state.canary=Math.min(25, state.canary+2);
+    }
+    if(Math.random()<0.25){
+      var nt=state.kpi.tests + rand(-1,1);
+      if(nt>=21 && nt<=27){ state.kpi.tests=nt; }
+    }
+    refreshAll();
+  },
+  replay:function(){
+    var p=state.sim.prog;
+    p[0].done=2; p[1].done=24; p[2].done=12; p[3].done=8;
+    p[4].done=0; p[4].total=1; p[4].wait=true;
+    state.sim.sec=0; state.sim.idleRounds=0;
+    state.nextStep=[{name:'Mock 联调',st:'done'},{name:'场景回归',st:'doing'},{name:'安全扫描',st:'wait'},{name:'灰度发布',st:'wait'}];
+    state.canary=10;
+    state.traces=JSON.parse(JSON.stringify(DEMO_TRACES));
+    toast('DAG 回放已启动：Intent → Contract → Skill → Agent → Simulation → Secure Release');
+    refreshAll();
+  }
+};
+function advanceNextStep(rounds){
+  if(rounds===1){
+    state.nextStep[1].st='done'; state.nextStep[2].st='doing';
+  } else if(rounds===3){
+    state.nextStep[2].st='done'; state.nextStep[3].st='doing';
+  }
+}
+function resetSimRound(){
+  var p=state.sim.prog;
+  p[0].done=0; p[1].done=0; p[2].done=0; p[3].done=0;
+  p[4].done=0; p[4].total=1; p[4].wait=true;
+  state.sim.sec=0; state.sim.idleRounds=0;
+  state.nextStep=[{name:'Mock 联调',st:'done'},{name:'场景回归',st:'doing'},{name:'安全扫描',st:'wait'},{name:'灰度发布',st:'wait'}];
+  state.canary=10;
+}
+
+/* ================= 时钟局部更新 ================= */
+function updateClockDom(){
+  var tc=$('traceClock'); if(tc){ tc.textContent=fmtHMS(state.traceSec); }
+  var sc=$('simClock'); if(sc){ sc.textContent=fmtHMS(state.sim.sec); }
+  var pt=$('phoneTime'); if(pt){ pt.textContent=fmtMS(state.phoneSec); }
+}
+
+/* ================= 统一刷新入口（唯一调度者） ================= */
+function refreshAll(){
+  renderSyncBadge();
+  renderKpi();
+  renderLifecycle();
+  renderSimMetrics();
+  renderSimProgress();
+  renderSimFooter();
+  renderTrace();
+  renderWorkflows();
+  renderNextStep();
+  renderRelease();
+  updateClockDom();
+}
+
+/* ---------- 各渲染函数：只读 state 写 DOM，互不调用 ---------- */
+function renderSyncBadge(){
+  var el=$('syncBadge'), tx=$('syncText'); if(!el) return;
+  if(state.sync==='ok'){ el.className='sync-badge'; tx.textContent = state.sdk ? '已同步 · 资料库' : '演示模式'; }
+  else if(state.sync==='syncing'){ el.className='sync-badge syncing'; tx.textContent='同步中…'; }
+  else { el.className='sync-badge offline'; tx.textContent='离线模式'; }
+}
+function renderKpi(){
+  $('kpiContract').textContent=state.kpi.contract;
+  $('kpiSkills').textContent=state.kpi.skills;
+  $('kpiTests').textContent=state.kpi.tests;
+  $('kpiDevices').textContent=state.kpi.devices;
+}
+function renderLifecycle(){
+  $('lcCanaryTag').textContent='Canary '+state.canary+'%';
+}
+function renderSimMetrics(){
+  var m=state.sim.metrics;
+  $('mMemory').textContent=m.memory.toFixed(1)+'GB';
+  $('mNpu').textContent=Math.round(m.npu)+'%';
+  $('mP95').textContent=Math.round(m.p95)+'ms';
+  $('mPower').textContent=m.power.toFixed(1)+'W';
+}
+function ringSvg(ratio, cls){
+  var C=63.3, off=(C*(1-Math.max(0,Math.min(1,ratio)))).toFixed(1);
+  return '<svg width="24" height="24" viewBox="0 0 24 24">'
+    +'<circle cx="12" cy="12" r="10" fill="none" stroke="#e6ede9" stroke-width="3"/>'
+    +'<circle cx="12" cy="12" r="10" fill="none" stroke="'+(cls==='wait'?'#c9d4ce':'#10b981')+'" stroke-width="3" stroke-linecap="round" stroke-dasharray="63.3" stroke-dashoffset="'+off+'" transform="rotate(-90 12 12)"/></svg>';
+}
+function renderSimProgress(){
+  var p=state.sim.prog, html='', i, it;
+  for(i=0;i<p.length;i++){
+    it=p[i];
+    if(it.wait){
+      html+='<div class="prog-item wait"><div class="prog-ico"><svg width="26" height="26" viewBox="0 0 26 26"><circle cx="13" cy="13" r="10.5" fill="none" stroke="#d7dfda" stroke-width="2.4"/></svg></div><div><div class="p-name">'+escapeHtml(it.name)+'</div><div class="p-val">待开始</div></div></div>';
+    } else if(it.done>=it.total){
+      html+='<div class="prog-item"><div class="prog-ico" style="color:var(--green-deep)"><svg width="26" height="26" viewBox="0 0 26 26"><circle cx="13" cy="13" r="12" fill="#10b981"/><path d="M8 13.4l3.2 3.2L18 10" stroke="#fff" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg></div><div><div class="p-name">'+escapeHtml(it.name)+'</div><div class="p-val">'+it.done+'/'+it.total+'</div></div></div>';
+    } else {
+      html+='<div class="prog-item"><div class="prog-ico">'+ringSvg(it.done/it.total)+'</div><div><div class="p-name">'+escapeHtml(it.name)+'</div><div class="p-val">'+it.done+'/'+it.total+'</div></div></div>';
+    }
+  }
+  $('progRow').innerHTML=sanitizeHtml(html);
+}
+function simStateText(){
+  var p=state.sim.prog, i;
+  var map={'编译构建':'编译构建','单元测试':'单元测试','性能测试':'性能测试','场景回归':'场景回归测试','结果分析':'结果分析'};
+  for(i=0;i<p.length;i++){ if(!p[i].wait && p[i].done<p[i].total){ return '运行中：'+(map[p[i].name]||p[i].name); } }
+  if(p[4].wait){ return '运行中：场景回归测试'; }
+  return '本轮仿真全部通过 · 灰度观察中';
+}
+function renderSimFooter(){
+  $('simState').textContent=simStateText();
+  var reg=state.sim.prog[3];
+  var ratio = state.sim.idleRounds>0 ? 1 : reg.done/reg.total;
+  $('simBar').style.width=Math.round(ratio*100)+'%';
+}
+var TR_ICON={ Agent:'i-bot', Skill:'i-cube', Tool:'i-wrench', Contract:'i-doc' };
+function renderTrace(){
+  var html='', i, t, w;
+  if(!state.traces.length){ $('traceList').innerHTML='<div class="empty-tip">正在加载调用链路数据…</div>'; return; }
+  for(i=0;i<state.traces.length;i++){
+    t=state.traces[i];
+    w=Math.min(95, Math.round(t.cost/220*88)+8);
+    html+='<div class="trace-row">'
+      +'<div class="tr-ico '+escapeHtml(t.type)+'"><svg class="ic"><use href="#'+TR_ICON[t.type]+'" /></svg></div>'
+      +'<div class="tr-mid"><div class="tr-type" data-field="tr-type" data-sp-bindable="database" data-sp-database-id="vyxhkufW37wdSjz8Tv3Zyz">'+escapeHtml(t.type)+'</div>'
+      +'<div class="tr-name" data-field="tr-name" data-sp-bindable="database" data-sp-database-id="vyxhkufW37wdSjz8Tv3Zyz">'+escapeHtml(t.name)+'</div></div>'
+      +'<span class="tr-time" data-field="tr-time" data-sp-bindable="database" data-sp-database-id="vyxhkufW37wdSjz8Tv3Zyz">'+escapeHtml(t.time)+'</span>'
+      +'<span class="tr-cost" data-field="tr-cost" data-sp-bindable="database" data-sp-database-id="vyxhkufW37wdSjz8Tv3Zyz">'+escapeHtml(t.cost)+'ms</span>'
+      +'<div class="tr-bar"><i style="width:'+w+'%"></i></div>'
+      +'<span class="tr-badge'+(t.status==='Success'?'':' warn')+'" data-field="tr-status" data-sp-bindable="database" data-sp-database-id="vyxhkufW37wdSjz8Tv3Zyz">'+escapeHtml(t.status)+'</span>'
+      +'</div>';
+  }
+  $('traceList').innerHTML=sanitizeHtml(html);
+}
+function wfIcon(name){
+  if(!name){ return ['i-cube','g']; }
+  if(name.indexOf('文件')>=0){ return ['i-folder','g']; }
+  if(name.indexOf('日程')>=0){ return ['i-calendar','b']; }
+  if(name.indexOf('外卖')>=0){ return ['i-takeout','o']; }
+  if(name.indexOf('消息')>=0){ return ['i-list','p']; }
+  if(name.indexOf('相册')>=0){ return ['i-folder','c']; }
+  if(name.indexOf('会议')>=0){ return ['i-doc','b']; }
+  return ['i-cube','g'];
+}
+function renderWorkflows(){
+  var html='', i, wf, ic, st;
+  if(!state.workflows.length){ $('wfGrid').innerHTML='<div class="empty-tip">暂无工作流记录，点击「运行新工作流」发起第一次仿真</div>'; return; }
+  for(i=0;i<state.workflows.length;i++){
+    wf=state.workflows[i];
+    ic=wfIcon(wf.name);
+    st = wf.status==='运行中' ? '<span class="wf-status running" data-field="wf-status" data-sp-bindable="database" data-sp-database-id="N3dtSeMOGPwFHfX8C0TFtg"><i></i>运行中</span>'
+       : wf.status==='失败' ? '<span class="wf-status failed" data-field="wf-status" data-sp-bindable="database" data-sp-database-id="N3dtSeMOGPwFHfX8C0TFtg"><i></i>失败</span>'
+       : '<span class="wf-status done" data-field="wf-status" data-sp-bindable="database" data-sp-database-id="N3dtSeMOGPwFHfX8C0TFtg"><svg class="ic" style="font-size:11px"><use href="#i-check"/></svg>已完成</span>';
+    html+='<div class="wf-card">'
+      +'<div class="wf-head"><div class="wf-ico '+ic[1]+'"><svg class="ic"><use href="#'+ic[0]+'"/></svg></div>'
+      +'<div><div class="wf-title" data-field="wf-name" data-sp-bindable="database" data-sp-database-id="N3dtSeMOGPwFHfX8C0TFtg">'+escapeHtml(wf.name)+'</div>'
+      +'<div class="wf-cat" data-field="wf-category" data-sp-bindable="database" data-sp-database-id="N3dtSeMOGPwFHfX8C0TFtg">'+escapeHtml(wf.cat)+'</div>'
+      +'<span data-field="wf-desc" data-sp-bindable="database" data-sp-database-id="N3dtSeMOGPwFHfX8C0TFtg" hidden>'+escapeHtml(wf.desc||'')+'</span></div>'
+      +st+'</div>'
+      +'<div class="wf-meta">'
+      +'<span><svg class="ic"><use href="#i-device"/></svg><em data-field="wf-devices" data-sp-bindable="database" data-sp-database-id="N3dtSeMOGPwFHfX8C0TFtg" style="font-style:normal">'+escapeHtml(wf.devices)+'</em>&nbsp;设备</span>'
+      +'<span><svg class="ic"><use href="#i-list"/></svg><em data-field="wf-steps" data-sp-bindable="database" data-sp-database-id="N3dtSeMOGPwFHfX8C0TFtg" style="font-style:normal">'+escapeHtml(wf.steps)+'</em>&nbsp;个步骤</span>'
+      +'<span><svg class="ic"><use href="#i-target"/></svg>覆盖率&nbsp;<em data-field="wf-coverage" data-sp-bindable="database" data-sp-database-id="N3dtSeMOGPwFHfX8C0TFtg" style="font-style:normal">'+escapeHtml(wf.coverage)+'</em>%</span>'
+      +'</div>'
+      +'<div class="wf-foot"><div class="wf-bar"><i style="width:'+escapeHtml(wf.coverage)+'%"></i></div>'
+      +'<span class="wf-dur">Regression <em data-field="wf-duration" data-sp-bindable="database" data-sp-database-id="N3dtSeMOGPwFHfX8C0TFtg" style="font-style:normal">'+escapeHtml(wf.duration)+'</em> min</span></div>'
+      +'</div>';
+  }
+  $('wfGrid').innerHTML=sanitizeHtml(html);
+}
+function renderNextStep(){
+  var html='', i, s;
+  for(i=0;i<state.nextStep.length;i++){
+    s=state.nextStep[i];
+    var ico = s.st==='done' ? '<svg class="ic" style="font-size:13px"><use href="#i-check"/></svg>'
+            : s.st==='doing' ? '' : String(i+1);
+    html+='<div class="step '+s.st+'"><span class="step-ico '+s.st+'">'+ico+'</span><span class="step-name">'+escapeHtml(s.name)+'</span></div>';
+  }
+  $('stepList').innerHTML=sanitizeHtml(html);
+  $('stepCount').textContent=state.nextStep.length;
+}
+function renderRelease(){
+  var C=219.9, off=C*(1-state.canary/100);
+  $('canaryArc').setAttribute('stroke-dashoffset', off.toFixed(1));
+  $('canaryNum').textContent=state.canary+'%';
+  $('relCanaryText').textContent='灰度发布 进行中 ('+state.canary+'%)';
+  $('lcCanaryTag').textContent='Canary '+state.canary+'%';
+}
+function renderAttention(){
+  var html='', i, a;
+  for(i=0;i<ATTN_DEMO.length;i++){
+    a=ATTN_DEMO[i];
+    html+='<div class="attn-item" data-attn="'+i+'"><div class="attn-ico '+a.tone+'"><svg class="ic"><use href="#'+a.icon+'"/></svg></div>'
+      +'<div class="attn-txt"><div class="attn-title">'+escapeHtml(a.title)+'</div><div class="attn-time">'+escapeHtml(a.time)+'</div></div>'
+      +'<span class="chev"><svg class="ic"><use href="#i-chev-r"/></svg></span></div>';
+  }
+  $('attnList').innerHTML=sanitizeHtml(html);
+  $('attnCount').textContent=ATTN_DEMO.length;
+  var bell=$('bellList');
+  if(bell){ bell.innerHTML=sanitizeHtml(html); }
+}
+/* ================= 能力域页面数据 ================= */
+var CAP_PAGES = {
+  'cap-access': { crumb:'Agentic OS / 能力接入', title:'能力接入 · 声明式 Contract',
+    desc:'系统应用开发者无需编写 MCP 适配代码，只需声明能力契约，AgentFunctionService 自动完成注册与协议适配——新增工具无需修改代码、无需发版，将"人工对接"变为"声明式注册"。',
+    tags:['Agent Contract 编辑器','变更影响分析','自动校验与 Mock','批量接入流水线'],
+    cards:[
+      { ic:'i-doc', color:'g', title:'Contract 可视化编辑器', desc:'表单填写 tool_name、description、parameters_schema、return_schema、permission_level，自动生成符合 Agent Contract 规范的声明文件。' },
+      { ic:'i-warn', color:'r', title:'Contract 变更影响分析', desc:'变更时自动分析受影响的 Agent、Skill 与编排流程，生成影响报告与迁移建议，杜绝邮件式同步。' },
+      { ic:'i-target', color:'b', title:'自动校验与 Mock 服务', desc:'Schema 合法性、命名规范、权限声明完整性自动校验；一键生成 Mock 服务，上游 Agent 可提前联调。' },
+      { ic:'i-list', color:'c', title:'批量接入流水线', desc:'Excel/CSV 模板批量填写，一键导入生成多个 Contract 并注册到 Registry，支撑 6000+ 原子技能 Skill 化。' } ] },
+  'cap-sim': { crumb:'Agentic OS / 仿真测试', title:'仿真测试 · 自动化验证',
+    desc:'在云端仿真环境完成 Agent/Skill 自动化测试，模拟 OriginOS 系统 API、传感器输入与多设备协同——将"真机手动验证"变为"仿真自动化"，回归测试 ≤ 30 分钟。',
+    tags:['Agent 行为沙箱','标准化场景库','真机集群','DAG 回放调试'],
+    cards:[
+      { ic:'i-monitor', color:'b', title:'Agent 行为沙箱', desc:'可控仿真环境中执行多步骤任务，自动记录 Action History；按任务成功率、效率、工具使用、推理质量、鲁棒性五维评分。' },
+      { ic:'i-list', color:'g', title:'场景库与任务集', desc:'覆盖外卖点单、跨设备文件流转、日程冲突处理等高频场景，含标准输入、预期行为序列与成功判定条件。' },
+      { ic:'i-phone', color:'c', title:'真机集群', desc:'真机 + 模拟器统一管理：远程连接、自动化操控、日志采集，附加 NPU profiling、功耗监控、内存追踪。' },
+      { ic:'i-refresh', color:'p', title:'编排 DAG 回放与断点调试', desc:'回放多 Agent 编排全过程，逐节点查看输入输出与上下文；任意节点断点续跑，无需从头重跑。' } ] },
+  'cap-runtime': { crumb:'Agentic OS / 端侧 Runtime', title:'端侧 Runtime · 开发支撑',
+    desc:'在云端开发环境模拟端侧 Runtime 行为：3B 模型内存约束、NPU TOPS 上限、推理延迟与功耗预算——端侧问题端侧验证，不再"云端开发、真机返工"。',
+    tags:['Runtime 模拟器','量化工具链','端云协同调试','性能基线'],
+    cards:[
+      { ic:'i-chip', color:'p', title:'端侧 Runtime 模拟器', desc:'限制可用内存与算力、模拟 NPU 推理延迟，提前验证 Skill 的内存占用与响应时间是否符合端侧约束。' },
+      { ic:'i-cube', color:'g', title:'模型部署与量化工具链', desc:'一键完成 FP32→FP16→INT8 量化、剪枝与 NPU 指令编译，云端训练、端侧部署。' },
+      { ic:'i-wave', color:'b', title:'端云协同调试', desc:'同时连接端侧模拟器与云侧 Runtime，实时观察上下文传递与路由决策，可强制端侧/云侧执行对比策略差异。' },
+      { ic:'i-zap', color:'a', title:'性能基线管理', desc:'为每个 Skill 建立 P50/P95 延迟、内存峰值、功耗基线，新版本超阈值自动告警。' } ] },
+  'cap-security': { crumb:'Agentic OS / 安全合规', title:'安全合规 · 可信验证',
+    desc:'热更新绕过 OTA，安全验证必须前置——静态扫描、动态沙箱、Contract 兼容性校验三道关口，未通过验证的 Skill 无法进入灰度发布。',
+    tags:['静态代码扫描','动态沙箱','兼容性校验','权限审核'],
+    cards:[
+      { ic:'i-shield', color:'g', title:'静态代码扫描', desc:'自动检查权限越界、敏感 API 调用与注入风险，Skill 热更新前强制执行。' },
+      { ic:'i-monitor', color:'b', title:'动态沙箱执行', desc:'隔离环境运行 Skill 并监控行为，捕捉越权访问与异常外联。' },
+      { ic:'i-doc', color:'c', title:'Contract 兼容性校验', desc:'确保 Skill 输入输出与依赖 Contract 一致，防止接口漂移引发线上故障。' },
+      { ic:'i-warn', color:'a', title:'权限边界与数据合规审核', desc:'权限声明完整性审核、数据访问合规检查，安全左移降低发布前返工成本。' } ] },
+  'cap-release': { crumb:'Agentic OS / 发布运营', title:'发布运营 · 热更新管道',
+    desc:'Skill 快速迭代与可信发布的统一通道：版本管理、多维灰度、指标对比、自动回滚——将"OTA 依赖"变为"热更新可信管道"，灰度发布 ≤ 1 小时。',
+    tags:['版本管理','灰度发布','自动回滚','市场预览'],
+    cards:[
+      { ic:'i-plane', color:'g', title:'Skill 版本管理与灰度发布', desc:'按设备型号、用户群体、地区灰度；自动对比新旧版本成功率、延迟、异常率，达阈值自动全量或回滚。' },
+      { ic:'i-shield', color:'b', title:'热更新安全验证管道', desc:'静态扫描 → 动态沙箱 → Contract 校验流水线，未通过验证的 Skill 无法进入灰度。' },
+      { ic:'i-cube', color:'p', title:'Skill 市场预览与沙箱试用', desc:'上传即生成沙箱试用环境，其他开发者无需安装到真机即可体验与评测。' },
+      { ic:'i-refresh', color:'c', title:'发布审计与回滚', desc:'全链路发布记录可追溯，一键回滚至任意历史版本，故障恢复以分钟计。' } ] },
+  'cap-knowledge': { crumb:'Agentic OS / 知识库', title:'知识库 · 最佳实践',
+    desc:'将组织隐性知识结构化为可检索、可执行的决策依据——AI 助手自动检索知识库，开发者遇到问题即问即答。',
+    tags:['开发规范','设计指南','错误模式','AI 检索'],
+    cards:[
+      { ic:'i-book', color:'g', title:'Skill 开发规范', desc:'ArkTS 脚本引擎、热插拔结构、资源约束清单——新技能开发的权威起点。' },
+      { ic:'i-doc', color:'b', title:'Contract 设计指南', desc:'参数 Schema 设计模式、权限分级建议、命名规范与反例。' },
+      { ic:'i-warn', color:'a', title:'常见错误处理模式', desc:'高频失败场景与修复方案沉淀，同类问题一次解决、全局复用。' },
+      { ic:'i-spark', color:'p', title:'AI 检索助手', desc:'自然语言提问，自动检索知识库给出解决方案与引用出处。' } ] }
+};
+function renderCapPage(key){
+  var p=CAP_PAGES[key]; if(!p){ return; }
+  $('capCrumbs').textContent=p.crumb;
+  $('capTitle').textContent=p.title;
+  $('capDesc').textContent=p.desc;
+  var tags='', cards='', i;
+  for(i=0;i<p.tags.length;i++){ tags+='<span class="cap-tag">'+escapeHtml(p.tags[i])+'</span>'; }
+  var colorMap={g:'kpi-ic g',b:'kpi-ic b',c:'kpi-ic c',p:'kpi-ic p',r:'kpi-ic r',a:'kpi-ic a'};
+  for(i=0;i<p.cards.length;i++){
+    var c=p.cards[i], cm=colorMap[c.color]||'kpi-ic g';
+    cards+='<div class="cap-card" data-capsrc="'+escapeHtml(c.title)+'"><div class="cap-ico '+cm+'" style="border-radius:12px"><svg class="ic"><use href="#'+c.ic+'"/></svg></div>'
+      +'<b>'+escapeHtml(c.title)+'</b><p>'+escapeHtml(c.desc)+'</p><span class="cap-phase">Phase 2 规划 · 点击查看需求文档</span></div>';
+  }
+  $('capTags').innerHTML=sanitizeHtml(tags);
+  $('capGrid').innerHTML=sanitizeHtml(cards);
+}
+
+/* ================= 导航切换 ================= */
+function switchPage(key, side){
+  if(key!=='overview' && !CAP_PAGES[key]){ key='overview'; }
+  state.activePage=key;
+  $('page-overview').className = 'page' + (key==='overview' ? ' active' : '');
+  $('page-generic').className = 'page' + (key!=='overview' ? ' active' : '');
+  if(key!=='overview'){ renderCapPage(key); }
+  var tabs=document.querySelectorAll('#topTabs button'), i, b;
+  for(i=0;i<tabs.length;i++){ tabs[i].className = tabs[i].getAttribute('data-nav')===key ? 'active' : ''; }
+  var sns=document.querySelectorAll('#sidenav button[data-nav]');
+  var firstCand=null, exact=null;
+  for(i=0;i<sns.length;i++){
+    b=sns[i]; b.className='';
+    if(b.getAttribute('data-nav')!==key){ continue; }
+    if(side && b.getAttribute('data-side')===side){ exact=b; }
+    if(!firstCand){ firstCand=b; }
+  }
+  var target = exact || firstCand;
+  if(target){ target.className='active'; }
+  closeDrawer();
+}
+function closeDrawer(){
+  var sn=$('sidenav'), mk=$('sidenavMask');
+  if(sn){ sn.classList.remove('open'); }
+  if(mk){ mk.classList.remove('show'); }
+}
+
+/* ================= Modal / Copilot ================= */
+var COP_TITLE={ skill:'生成 Skill', contract:'生成 Contract', regression:'运行回归', trace:'分析 Trace' };
+var currentCopKind='skill';
+function openModal(id){ var m=$(id); if(m){ m.classList.add('open'); } }
+function closeModal(id){ var m=$(id); if(m){ m.classList.remove('open'); } }
+function appendMsg(who, html, save){
+  var d=document.createElement('div');
+  d.className='msg '+who;
+  d.innerHTML=sanitizeHtml(html);
+  $('chatFlow').appendChild(d);
+  var body=d.parentNode; if(body){ body.scrollTop=body.scrollHeight; }
+  if(save!==false){
+    if(!state.copLog[currentCopKind]){ state.copLog[currentCopKind]=[]; }
+    state.copLog[currentCopKind].push({who:who, html:html});
+    lsSet('cop', JSON.stringify(state.copLog));
+  }
+}
+function copCard(title, lines){
+  var h='<div class="msg-card"><b>'+escapeHtml(title)+'</b>';
+  for(var i=0;i<lines.length;i++){ h+='<div>· '+escapeHtml(lines[i])+'</div>'; }
+  return h+'</div>';
+}
+function copScript(kind){
+  var prompts={
+    skill:'帮我生成一个「文件传输」Skill 的开发框架',
+    contract:'为「日程查询」系统应用生成 Agent Contract',
+    regression:'对 Skill v2.4.1 运行一轮回归测试',
+    trace:'过去 3 小时里 Agent 工具调用失败的原因是什么？'
+  };
+  appendMsg('me', escapeHtml(prompts[kind]||'请协助分析当前工作台状态'));
+  appendMsg('ai', '正在解析需求并匹配 Contract Registry…');
+  setTimeout(function(){
+    var results={
+      skill: copCard('生成结果 · Skill 框架',[
+        'SKILL.md：意图「传输文件」→ 触发词 12 组已登记',
+        'ArkTS 入口：file_transfer.ets（含取消/进度回调桩）',
+        'Contract：file_transfer_v2 已匹配，权限级 L2',
+        '沙箱验证：预估内存 212MB / P95 180ms，符合端侧约束']),
+      contract: copCard('生成结果 · Contract 声明',[
+        'tool_name：calendar.query_free_slot',
+        'parameters_schema：{ date: string, range: 7d }',
+        'return_schema：{ slots: Slot[], conflict: boolean }',
+        'permission_level：L1（只读） · Mock 服务已就绪']),
+      regression: copCard('回归报告 · Skill v2.4.1',[
+        '场景命中 12/12 · 通过 12/12（耗时 8m42s）',
+        'P95 184ms / 内存峰值 1.8GB，均达标',
+        '与 v2.4.0 对比：成功率 +0.6%，异常率持平',
+        '结论：建议进入灰度（当前 Canary 10%）']),
+      trace: copCard('根因分析 · 最近 3h',[
+        'npu_infer 超时 3 次：集中在 14:00-14:20 高负载窗口',
+        '关联 Contract：npu_sched_v1 的队列上限触发限流',
+        '建议：将 batch_size 上限从 8 调整为 6，或扩容推理队列'])
+    };
+    appendMsg('ai', '完成。以下是分析结果：'+(results[kind]||''));
+  }, 1200);
+}
+function sendChat(){
+  var inp=$('chatInput'), v=inp.value.trim();
+  if(!v){ return; }
+  inp.value='';
+  appendMsg('me', escapeHtml(v));
+  appendMsg('ai', '正在分析…');
+  setTimeout(function(){
+    var last=$('chatFlow');
+    if(last && last.lastChild){ last.removeChild(last.lastChild); }
+    var low=v.toLowerCase(), reply;
+    if(low.indexOf('skill')>=0){ reply='已进入 Skill 生成流程：'+copCard('Skill 生成', ['意图解析完成','框架代码已生成，可在沙箱中验证']); }
+    else if(low.indexOf('contract')>=0 || low.indexOf('契约')>=0){ reply='已生成 Contract 草案：'+copCard('Contract 生成', ['Schema 校验通过','Mock 服务已就绪']); }
+    else if(low.indexOf('回归')>=0){ reply='回归已触发：'+copCard('回归执行', ['命中 12 个场景','预计 30 分钟内出具报告']); }
+    else if(low.indexOf('trace')>=0 || low.indexOf('失败')>=0){ reply='Trace 分析完成：'+copCard('根因分析', ['定位到 npu_infer 超时簇','建议调整 batch_size 上限']); }
+    else { reply='收到。当前工作台运行正常：Contract 128 · Skills 486 · 灰度 Canary '+state.canary+'%。你可以试着问我：生成 Skill / 生成 Contract / 运行回归 / 分析 Trace。'; }
+    appendMsg('ai', reply);
+  }, 900);
+}
+
+/* ================= 工作流表单 ================= */
+function statusTextFromId(id){
+  var opts=DataBridge.wfOptions['状态'], i;
+  if(opts){ for(i=0;i<opts.length;i++){ if(opts[i].id===id){ return opts[i].text; } } }
+  for(var k in OPT.wfStatus){ if(OPT.wfStatus[k]===id){ return k; } }
+  return '运行中';
+}
+function fillWfForm(tplKey){
+  var t=WF_TPL[tplKey]; if(!t){ return; }
+  $('fName').value=t.name; $('fCat').value=t.cat; $('fDesc').value=t.desc;
+  $('fDev').value=t.devices; $('fStep').value=t.steps; $('fDur').value=t.duration;
+  $('fCov').value=rand(12,40);
+  var sel=$('fStatus');
+  if(sel && !sel.value){ sel.value=OPT.wfStatus['运行中']; }
+}
+function submitWf(e){
+  e.preventDefault();
+  var btn=$('wfSubmit');
+  var rec={
+    name:$('fName').value.trim(), cat:$('fCat').value.trim(), desc:$('fDesc').value.trim(),
+    devices:parseInt($('fDev').value,10)||1, steps:parseInt($('fStep').value,10)||1,
+    coverage:parseInt($('fCov').value,10)||0, duration:parseInt($('fDur').value,10)||1,
+    status:statusTextFromId($('fStatus').value)
+  };
+  if(!rec.name || !rec.cat){ toast('请填写工作流名称与分类'); return; }
+  if(rec.coverage<=0){ rec.coverage=rand(12,40); }
+  if(btn){ btn.disabled=true; btn.textContent='正在启动…'; }
+  DataBridge.addWorkflow(rec).then(function(ok){
+    rec.coverage=rec.coverage; /* 保持提交值 */
+    state.workflows.unshift(rec);
+    if(state.workflows.length>6){ state.workflows.length=6; }
+    try{ localStorage.removeItem(LS_PREFIX+'wfForm'); }catch(err){}
+    closeModal('wfModal');
+    $('wfForm').reset();
+    fillStatusFallback();
+    if(btn){ btn.disabled=false; btn.textContent='启动工作流'; }
+    toast(ok ? '工作流已启动并写入资料库：'+rec.name : '离线模式：工作流已记录在本地（'+rec.name+'）');
+    refreshAll();
+  });
+}
+function fillStatusFallback(){
+  var sel=$('fStatus'); if(!sel || sel.options.length>1){ return; }
+  sel.innerHTML='<option value="">请选择</option>'
+    +'<option value="'+OPT.wfStatus['运行中']+'">运行中</option>'
+    +'<option value="'+OPT.wfStatus['已完成']+'">已完成</option>'
+    +'<option value="'+OPT.wfStatus['失败']+'">失败</option>';
+  sel.value=OPT.wfStatus['运行中'];
+}
+
+/* ================= 事件绑定（一次性） ================= */
+function bindEvents(){
+  document.addEventListener('click', function(e){
+    var navEl = e.target.closest ? e.target.closest('[data-nav]') : null;
+    if(navEl){
+      var side = navEl.getAttribute('data-side');
+      switchPage(navEl.getAttribute('data-nav'), side);
+      if(navEl.getAttribute('data-nav')==='cap-sim' && navEl.classList.contains('trace-more')){
+        toast('完整 Trace 视图将在 Phase 2 上线（当前为调用链实时预览）');
+      }
+      return;
+    }
+    var capCard = e.target.closest ? e.target.closest('[data-capsrc]') : null;
+    if(capCard){ toast('「'+capCard.getAttribute('data-capsrc')+'」属于 Phase 2 迭代范围，详见需求文档'); return; }
+    var attn = e.target.closest ? e.target.closest('[data-attn]') : null;
+    if(attn){ toast('告警详情将在 Phase 2 排障工作流中呈现'); return; }
+    if(e.target.closest('#envPicker')){
+      $('envMenu').classList.toggle('open');
+      return;
+    }
+    var envBtn = e.target.closest ? e.target.closest('[data-env]') : null;
+    if(envBtn){
+      state.env=envBtn.getAttribute('data-env');
+      $('envLabel').textContent=state.env;
+      var all=$('envMenu').querySelectorAll('button'), i;
+      for(i=0;i<all.length;i++){ all[i].className = all[i]===envBtn ? 'on' : ''; }
+      $('envMenu').classList.remove('open');
+      toast('已切换到 '+state.env+' 环境（演示）');
+      return;
+    }
+    if(e.target.closest('#bellBtn')){ $('bellMenu').classList.toggle('open'); return; }
+    if(e.target.closest('#copMore')){ toast('AI Copilot 设置为演示功能'); return; }
+    if(e.target.closest('#simMore')){ toast('仿真高级选项将在 Phase 2 提供'); return; }
+    if(e.target.closest('#traceMore')){ toast('Trace 过滤与导出将在 Phase 2 提供'); return; }
+    if(e.target.closest('#relMore')){ toast('发布流水线详情见 Trusted Release 卡片'); return; }
+    if(e.target.closest('#relDetailBtn')){ toast('Skill v2.4.1：安全扫描通过 · 兼容性通过 · Canary '+state.canary+'%'); return; }
+    if(e.target.closest('#replayBtn')){ Engine.replay(); return; }
+    if(e.target.closest('#playBtn')){
+      state.sim.running=!state.sim.running;
+      toast(state.sim.running ? '仿真已继续' : '仿真已暂停');
+      return;
+    }
+    if(e.target.closest('#runWfBtn')){
+      var sel=$('fStatus'); if(sel && sel.options.length<=1){ fillStatusFallback(); }
+      $('fTpl').value='msg'; fillWfForm('msg');
+      openModal('wfModal'); return;
+    }
+    var copBtn = e.target.closest ? e.target.closest('[data-cop]') : null;
+    if(copBtn){
+      currentCopKind=copBtn.getAttribute('data-cop');
+      $('copModalTitle').textContent='AI Copilot · '+COP_TITLE[currentCopKind];
+      $('chatFlow').innerHTML='';
+      var log=state.copLog[currentCopKind], i;
+      if(log && log.length){ for(i=0;i<log.length;i++){ appendMsg(log[i].who, log[i].html, false); } }
+      else { copScript(currentCopKind); }
+      openModal('copilotModal'); return;
+    }
+    if(e.target.closest('#chatSend')){ sendChat(); return; }
+    var closer = e.target.closest ? e.target.closest('[data-close]') : null;
+    if(closer){ closeModal(closer.getAttribute('data-close')); return; }
+    if(e.target.classList && e.target.classList.contains('modal')){ e.target.classList.remove('open'); return; }
+    if(!e.target.closest('.env-wrap')){ var em=$('envMenu'); if(em){ em.classList.remove('open'); } }
+    if(!e.target.closest('.bell-wrap')){ var bm=$('bellMenu'); if(bm){ bm.classList.remove('open'); } }
+  });
+  $('hamburger').addEventListener('click', function(){
+    $('sidenav').classList.add('open'); $('sidenavMask').classList.add('show');
+  });
+  $('sidenavMask').addEventListener('click', closeDrawer);
+  $('chatInput').addEventListener('keydown', function(e){ if(e.key==='Enter'){ sendChat(); } });
+  $('globalSearch').addEventListener('keydown', function(e){
+    if(e.key==='Enter'){ toast('全局搜索为演示功能：'+($('globalSearch').value||'请输入关键词')); }
+  });
+  $('fTpl').addEventListener('change', function(){ fillWfForm($('fTpl').value); });
+  $('wfForm').addEventListener('submit', submitWf);
+  /* DSDK008：提交字段本地缓存（防抖 300ms） */
+  var cacheTm=null;
+  $('wfForm').addEventListener('input', function(){
+    clearTimeout(cacheTm);
+    cacheTm=setTimeout(function(){
+      var data={
+        tpl:$('fTpl').value, name:$('fName').value, cat:$('fCat').value, desc:$('fDesc').value,
+        dev:$('fDev').value, stp:$('fStep').value, cov:$('fCov').value, dur:$('fDur').value
+      };
+      lsSet('wfForm', JSON.stringify(data));
+    }, 300);
+  });
+  restoreWfForm();
+}
+function restoreWfForm(){
+  var raw=lsGet('wfForm'); if(!raw){ return; }
+  try{
+    var d=JSON.parse(raw);
+    if(d.tpl){ $('fTpl').value=d.tpl; }
+    if(d.name){ $('fName').value=d.name; } if(d.cat){ $('fCat').value=d.cat; }
+    if(d.desc){ $('fDesc').value=d.desc; } if(d.dev){ $('fDev').value=d.dev; }
+    if(d.stp){ $('fStep').value=d.stp; } if(d.cov){ $('fCov').value=d.cov; }
+    if(d.dur){ $('fDur').value=d.dur; }
+  }catch(e){}
+}
+
+/* ================= 初始化 ================= */
+function loadState(){
+  var raw=lsGet('cop');
+  if(raw){ try{ state.copLog=JSON.parse(raw)||{}; }catch(e){ state.copLog={}; } }
+}
+function init(){
+  loadState();
+  bindEvents();
+  DataBridge.init();
+  renderAttention();
+  Engine.start();
+  refreshAll();
+}
+document.addEventListener('DOMContentLoaded', init);
+})();
+</script>
+</body>
+</html>
