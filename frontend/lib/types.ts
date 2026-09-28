@@ -117,19 +117,68 @@ export interface Device {
 }
 
 /* ── AI Copilot（SSE） ──────────────────────────────────────── */
+
+/** Copilot 快捷场景（右侧栏 4 个入口） */
+export type CopilotKind = 'skill' | 'contract' | 'regression' | 'trace';
+
 export interface CopilotMessage {
   role: 'user' | 'assistant';
   content: string;
 }
 
+export interface CopilotContext {
+  page?: string;
+  workflowId?: string;
+  env?: string;
+  /** 快捷场景：用于定制系统提示词与预设开场白 */
+  kind?: CopilotKind;
+}
+
 export interface CopilotRequest {
   messages: CopilotMessage[];
-  context?: {
-    page?: string;
-    workflowId?: string;
-    env?: string;
-  };
+  context?: CopilotContext;
 }
+
+/* ── AI Copilot · SSE 事件（data: <JSON>） ──────────────────── */
+
+/** 文本增量：data: {"delta":"..."} */
+export interface CopilotDeltaEvent {
+  delta: string;
+}
+
+/** 心跳保活（5s 一次，前端忽略） */
+export interface CopilotPingEvent {
+  type: 'ping';
+  ts: number;
+}
+
+/** 流已开启后再出错，只能用事件表达（HTTP 状态码已提交） */
+export interface CopilotErrorEvent {
+  error: { code: string; message: string };
+}
+
+/** 用量回执（后端端点回传 runs/tokens/limit；平台 agents 端点仅有 tokens） */
+export interface CopilotUsageEvent {
+  type: 'usage';
+  usage: { tokens: number; runs?: number; limit?: number };
+}
+
+/** 工具调用进度（仅 agents/ 平台端点产出） */
+export interface CopilotToolEvent {
+  type: 'tool_call' | 'tool_result';
+  name: string;
+  content?: string;
+}
+
+export type CopilotStreamEvent =
+  | CopilotDeltaEvent
+  | CopilotPingEvent
+  | CopilotErrorEvent
+  | CopilotUsageEvent
+  | CopilotToolEvent;
+
+/** SSE 结束标记 */
+export const SSE_DONE = '[DONE]';
 
 /* ── UI 派生类型 ────────────────────────────────────────────── */
 export type SyncState = 'ok' | 'syncing' | 'offline';

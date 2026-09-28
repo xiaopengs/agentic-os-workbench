@@ -7,12 +7,15 @@
  * - 其他错误 → toast
  */
 import { emitToast } from './toast-bus';
+import { getOrCreateConversationId } from './conversation';
 import type {
   ApiResp,
   AuthResult,
   AuditLog,
   Contract,
   CopilotRequest,
+  CopilotStreamEvent,
+  CopilotUsageEvent,
   Device,
   Skill,
   Trace,
@@ -22,6 +25,7 @@ import type {
   Workflow,
   WorkflowInput,
 } from './types';
+import { SSE_DONE } from './types';
 
 export const API_BASE = (process.env.NEXT_PUBLIC_API_BASE || '/api').replace(/\/+$/, '');
 
@@ -223,55 +227,107 @@ export const api = {
   },
 };
 
+/* ── SSE 流式请求（AI Copilot 及后续 AI 端点共用） ──────────── */
+
+/** 流内 error 事件载荷 */
+export interface StreamErrorPayload {
+  code: string;
+  message: string;
+}
+
+export interface StreamSSEHandlers {
+  /** 文本增量（打字机渲染） */
+  onDelta?: (text: string) => void;
+  /** 流内 error 事件（HTTP 状态码已提交，错误只能走事件） */
+  onErrorEvent?: (payload: StreamErrorPayload) => void;
+  /** 用量回执 */
+  onUsage?: (usage: CopilotUsageEvent['usage']) => void;
+  /** 原始事件（已过滤心跳），便于扩展 tool_call / done 等 */
+  onEvent?: (event: CopilotStreamEvent) => void;
+}
+
+export interface StreamSSEOptions extends StreamSSEHandlers {
+  /** 相对 API_BASE 的路径，如 '/ai/copilot' */
+  path: string;
+  body?: unknown;
+  signal?: AbortSignal;
+  /** 静默模式：失败不弹 toast */
+  silent?: boolean;
+}
+
 /**
- * AI Copilot · SSE 流式对话
- * 后端若以 application/json 一次性返回，则自动降级为整段文本。
+ * 发起 SSE 流式请求并逐帧解析。
+ *
+ * 错误语义与 request() 保持一致：
+ *   401 → 触发全局登出跳转 + ApiClientError(UNAUTHORIZED)
+ *   402 → 配额提示 + ApiClientError(QUOTA_EXCEEDED)
+ *   503 → AI Gateway 不可用 + ApiClientError(AI_UNAVAILABLE)
+ *   其他 → ApiClientError(HTTP_ERROR)（优先透传后端 ApiResp.error.message）
+ * 用户中断 → 原样抛出 AbortError（调用方用 err.name 判断）
  */
-export async function streamCopilot(
-  payload: CopilotRequest,
-  onDelta: (chunk: string) => void,
-  signal?: AbortSignal,
-): Promise<void> {
-  const token = getToken();
-  const res = await fetch(`${API_BASE}/ai/copilot`, {
-    method: 'POST',
-    credentials: 'include',
-    cache: 'no-store',
-    signal,
-    headers: {
-      'Content-Type': 'application/json',
-      Accept: 'text/event-stream',
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    },
-    body: JSON.stringify(payload),
-  });
+export async function streamSSE(options: StreamSSEOptions): Promise<void> {
+  const { path, body, signal, silent, onDelta, onErrorEvent, onUsage, onEvent } = options;
 
-  if (res.status === 401) {
-    unauthorizedHandler?.();
-    throw new ApiClientError('登录已失效，请重新登录', 'UNAUTHORIZED', 401);
+  let res: Response;
+  try {
+    res = await fetch(`${API_BASE}${path.startsWith('/') ? path : `/${path}`}`, {
+      method: 'POST',
+      credentials: 'include',
+      cache: 'no-store',
+      signal,
+      headers: {
+        'Content-Type': 'application/json',
+        Accept: 'text/event-stream',
+        ...(getToken() ? { Authorization: `Bearer ${getToken()}` } : {}),
+        // ⭐ 平台契约：AI 端点必须携带会话 ID
+        'makers-conversation-id': getOrCreateConversationId(),
+      },
+      body: JSON.stringify(body ?? {}),
+    });
+  } catch (e) {
+    if ((e as Error)?.name === 'AbortError') throw e; // 用户中断，交给调用方处理
+    const msg = '网络异常，请检查连接后重试';
+    if (!silent) emitToast(msg);
+    throw new ApiClientError(msg, 'NETWORK', 0);
   }
-  if (res.status === 402) {
-    const msg = '本月 AI 配额已耗尽，请升级 Pro 或等待下月重置';
-    emitToast(msg);
-    throw new ApiClientError(msg, 'QUOTA_EXCEEDED', 402);
-  }
+
+  // 非 2xx：优先拆解 ApiResp 信封，保证错误文案与后端一致
   if (!res.ok) {
-    const msg = `Copilot 请求失败（${res.status}）`;
-    emitToast(msg);
-    throw new ApiClientError(msg, 'HTTP_ERROR', res.status);
+    const text = await res.text().catch(() => '');
+    let error: StreamErrorPayload | null = null;
+    try {
+      const parsed = JSON.parse(text) as { error?: StreamErrorPayload };
+      if (parsed?.error?.message) error = parsed.error;
+    } catch {
+      /* 非 JSON 响应 */
+    }
+
+    const code = error?.code || (res.status === 402 ? 'QUOTA_EXCEEDED' : res.status === 401 ? 'UNAUTHORIZED' : res.status === 503 ? 'AI_UNAVAILABLE' : 'HTTP_ERROR');
+    const fallback =
+      code === 'QUOTA_EXCEEDED'
+        ? '本月 AI 配额已耗尽，请升级 Pro 或等待下月重置'
+        : code === 'UNAUTHORIZED'
+          ? '登录已失效，请重新登录'
+          : code === 'AI_UNAVAILABLE'
+            ? 'AI Copilot 暂不可用，请稍后重试'
+            : `请求失败（${res.status}）`;
+    const message = error?.message || fallback;
+
+    if (res.status === 401) unauthorizedHandler?.();
+    if (!silent && code !== 'UNAUTHORIZED') emitToast(message);
+    throw new ApiClientError(message, code, res.status);
   }
 
-  const ctype = res.headers.get('content-type') || '';
-  if (!res.body) throw new ApiClientError('Copilot 返回空响应', 'EMPTY', res.status);
+  if (!res.body) throw new ApiClientError('响应为空', 'EMPTY', res.status);
 
-  // 非流式：整包 JSON
-  if (ctype.includes('application/json')) {
+  // 后端降级为一次性 JSON 时，整包作为单帧处理
+  if ((res.headers.get('content-type') || '').includes('application/json')) {
     const json = (await res.json()) as { data?: { content?: string; text?: string } } & {
       content?: string;
       text?: string;
     };
     const text = json?.data?.content ?? json?.content ?? json?.data?.text ?? json?.text ?? '';
-    if (text) onDelta(text);
+    if (text) onDelta?.(text);
     return;
   }
 
@@ -286,24 +342,58 @@ export async function streamCopilot(
 
     const lines = buffer.split('\n');
     buffer = lines.pop() ?? '';
+
     for (const line of lines) {
       const trimmed = line.trim();
-      if (!trimmed || trimmed.startsWith(':')) continue;
-      if (!trimmed.startsWith('data:')) continue;
+      if (!trimmed || trimmed.startsWith(':') || !trimmed.startsWith('data:')) continue;
+
       const data = trimmed.slice(5).trim();
-      if (data === '[DONE]') return;
+      if (!data) continue;
+      if (data === SSE_DONE) return;
+
+      let event: CopilotStreamEvent;
       try {
-        const parsed = JSON.parse(data) as
-          | string
-          | { content?: string; text?: string; delta?: string; choices?: unknown };
-        if (typeof parsed === 'string') onDelta(parsed);
-        else if (typeof parsed?.content === 'string') onDelta(parsed.content);
-        else if (typeof parsed?.delta === 'string') onDelta(parsed.delta);
-        else if (typeof parsed?.text === 'string') onDelta(parsed.text);
+        event = JSON.parse(data) as CopilotStreamEvent;
       } catch {
         // 纯文本 SSE（非 JSON payload）
-        onDelta(data);
+        onDelta?.(data);
+        continue;
       }
+
+      const anyEvent = event as unknown as Record<string, unknown>;
+      if (anyEvent.type === 'ping') continue; // 心跳，忽略
+
+      onEvent?.(event);
+
+      if (typeof anyEvent.delta === 'string') {
+        if (anyEvent.delta) onDelta?.(anyEvent.delta);
+        continue;
+      }
+      if (anyEvent.error && typeof anyEvent.error === 'object') {
+        onErrorEvent?.(anyEvent.error as StreamErrorPayload);
+        continue;
+      }
+      if (anyEvent.type === 'usage' && anyEvent.usage && typeof anyEvent.usage === 'object') {
+        onUsage?.(anyEvent.usage as CopilotUsageEvent['usage']);
+        continue;
+      }
+      // 兼容历史格式：{ content } / { text }
+      if (typeof anyEvent.content === 'string') onDelta?.(anyEvent.content);
+      else if (typeof anyEvent.text === 'string') onDelta?.(anyEvent.text);
     }
   }
+}
+
+/**
+ * AI Copilot · SSE 流式对话
+ * @param payload  { messages, context }
+ * @param onDelta  文本增量回调
+ * @param signal   中断信号（AbortController）
+ */
+export async function streamCopilot(
+  payload: CopilotRequest,
+  onDelta: (chunk: string) => void,
+  signal?: AbortSignal,
+): Promise<void> {
+  return streamSSE({ path: '/ai/copilot', body: payload, signal, onDelta });
 }

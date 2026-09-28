@@ -118,19 +118,68 @@ export interface Device {
 }
 
 /* ── AI Copilot（SSE） ──────────────────────────────────────── */
+
+/** Copilot 快捷场景（右侧栏 4 个入口） */
+export type CopilotKind = 'skill' | 'contract' | 'regression' | 'trace';
+
 export interface CopilotMessage {
   role: 'user' | 'assistant';
   content: string;
 }
 
+export interface CopilotContext {
+  page?: string;
+  workflowId?: string;
+  env?: string;
+  /** 快捷场景：用于定制系统提示词与预设开场白 */
+  kind?: CopilotKind;
+}
+
 export interface CopilotRequest {
   messages: CopilotMessage[];
-  context?: {
-    page?: string;
-    workflowId?: string;
-    env?: string;
-  };
+  context?: CopilotContext;
 }
+
+/* ── AI Copilot · SSE 事件（data: <JSON>） ──────────────────── */
+
+/** 文本增量：data: {"delta":"..."} */
+export interface CopilotDeltaEvent {
+  delta: string;
+}
+
+/** 心跳保活（5s 一次，前端忽略） */
+export interface CopilotPingEvent {
+  type: 'ping';
+  ts: number;
+}
+
+/** 流已开启后再出错，只能用事件表达（HTTP 状态码已提交） */
+export interface CopilotErrorEvent {
+  error: { code: string; message: string };
+}
+
+/** 用量回执（后端端点回传 runs/tokens/limit；平台 agents 端点仅有 tokens） */
+export interface CopilotUsageEvent {
+  type: 'usage';
+  usage: { tokens: number; runs?: number; limit?: number };
+}
+
+/** 工具调用进度（仅 agents/ 平台端点产出） */
+export interface CopilotToolEvent {
+  type: 'tool_call' | 'tool_result';
+  name: string;
+  content?: string;
+}
+
+export type CopilotStreamEvent =
+  | CopilotDeltaEvent
+  | CopilotPingEvent
+  | CopilotErrorEvent
+  | CopilotUsageEvent
+  | CopilotToolEvent;
+
+/** SSE 结束标记 */
+export const SSE_DONE = '[DONE]';
 
 /* ── UI 派生类型 ────────────────────────────────────────────── */
 export type SyncState = 'ok' | 'syncing' | 'offline';
@@ -178,6 +227,8 @@ export const ERROR_CODES = {
   VALIDATION_ERROR: 'VALIDATION_ERROR',
   /** 资源冲突（如邮箱已注册）→ HTTP 409 */
   CONFLICT: 'CONFLICT',
+  /** AI Gateway 未配置 / 不可用 → HTTP 503 */
+  AI_UNAVAILABLE: 'AI_UNAVAILABLE',
 } as const;
 
 export type ErrorCode = (typeof ERROR_CODES)[keyof typeof ERROR_CODES];
@@ -189,6 +240,7 @@ export const HTTP_STATUS_BY_CODE: Record<string, number> = {
   [ERROR_CODES.NOT_FOUND]: 404,
   [ERROR_CODES.VALIDATION_ERROR]: 400,
   [ERROR_CODES.CONFLICT]: 409,
+  [ERROR_CODES.AI_UNAVAILABLE]: 503,
 };
 
 /* ── 配额常量 ───────────────────────────────────────────────── */
@@ -199,6 +251,16 @@ export const PLAN_LIMITS: Record<Plan, number> = {
   free: FREE_LIMIT,
   pro: PRO_LIMIT,
 };
+
+/* ── AI Gateway 常量（平台自动注入，禁止硬编码到业务代码） ──── */
+export const AI_GATEWAY_ENV_KEYS = {
+  API_KEY: 'AI_GATEWAY_API_KEY',
+  BASE_URL: 'AI_GATEWAY_BASE_URL',
+  MODEL: 'AI_GATEWAY_MODEL',
+} as const;
+
+/** 未显式配置 AI_GATEWAY_MODEL 时的默认模型 */
+export const DEFAULT_AI_MODEL = '@makers/deepseek-v4-flash';
 
 /* ── 其他共享常量 ───────────────────────────────────────────── */
 export const WORKFLOW_STATUSES: WorkflowStatus[] = ['running', 'done', 'failed', 'queued'];

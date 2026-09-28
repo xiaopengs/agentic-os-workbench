@@ -16,6 +16,9 @@ npm-debug.log*
 
 # Node
 node_modules/
+
+# 部署单元（构建产物，由 scripts/build-deploy.mjs 生成）
+dist/
 # 注意：package-lock.json 必须提交（保证商业化项目构建可复现）
 
 # Python
@@ -26,5 +29,10 @@ __pycache__/
 # Local secrets & credentials — NEVER commit
 .env
 .env.*
+# ⚠️ 例外：.env.example 必须入库 —— CLI 依据它决定部署时注入哪些环境变量
+!.env.example
 *token*
 credential*.json
+
+# EdgeOne Makers 构建产物（运行时自动生成，禁止手改）
+.edgeone/

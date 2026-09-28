@@ -36,6 +36,8 @@ export const notFound = (message = '资源不存在'): ApiError =>
 export const conflict = (message: string): ApiError => new ApiError(message, ERR.CONFLICT, 409);
 export const misconfig = (message: string): ApiError =>
   new ApiError(message, ERR.SERVER_MISCONFIG, 500);
+export const aiUnavailable = (message = 'AI Gateway 暂不可用，请稍后重试'): ApiError =>
+  new ApiError(message, ERR.AI_UNAVAILABLE, 503);
 
 /* ── 状态码映射 ─────────────────────────────────────────────── */
 export function statusForCode(code: string): number {

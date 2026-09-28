@@ -11,6 +11,7 @@
  *   GET                   /devices
  *   GET                   /usage
  *   GET                   /audit
+ *   POST                  /ai/copilot   （SSE 流式，AI Gateway）
  *   GET                   /health
  */
 import { corsHeaders, guard, notFound } from '../lib/resp';
@@ -23,6 +24,7 @@ import { createTrace, listTraces } from './traces';
 import { listContracts, listDevices, listSkills } from './assets';
 import { getUsage } from './usage';
 import { listAudit } from './audit';
+import { postCopilot } from './copilot';
 
 export type Handler = (ctx: ApiCtx) => Promise<Response>;
 
@@ -61,6 +63,9 @@ route('GET', '/contracts', listContracts);
 route('GET', '/devices', listDevices);
 route('GET', '/usage', getUsage);
 route('GET', '/audit', listAudit);
+
+/* ── AI Copilot（SSE） ─────────────────────────────────────── */
+route('POST', '/ai/copilot', postCopilot);
 
 /* ── 健康检查 ───────────────────────────────────────────────── */
 route('GET', '/health', async () =>

@@ -14,5 +14,11 @@
     "resolveJsonModule": true,
     "forceConsistentCasingInFileNames": true
   },
-  "include": ["lib/**/*.ts", "functions/**/*.ts", "../shared/**/*.ts", "../cloud-functions/**/*.ts"]
+  "include": [
+    "lib/**/*.ts",
+    "functions/**/*.ts",
+    "../shared/**/*.ts",
+    "../cloud-functions/**/*.ts",
+    "../agents/**/*.ts"
+  ]
 }

@@ -3,10 +3,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Icon } from '@/components/icons/Icon';
 import { Modal } from './Modal';
-import { streamCopilot } from '@/lib/api-client';
-import type { CopilotMessage } from '@/lib/types';
+import { ApiClientError, streamSSE } from '@/lib/api-client';
+import type { CopilotKind, CopilotMessage } from '@/lib/types';
 
-export type CopilotKind = 'skill' | 'contract' | 'regression' | 'trace';
+export type { CopilotKind };
 
 export const COP_TITLE: Record<CopilotKind, string> = {
   skill: '生成 Skill',
@@ -24,6 +24,17 @@ const PRESET: Record<CopilotKind, string> = {
 
 const LOG_KEY = 'agentic_os_copilot';
 
+/** 流内/HTTP 错误统一形态，用于渲染错误条 */
+interface CopilotError {
+  code: string;
+  message: string;
+}
+
+/** 402 配额耗尽：单独文案 + 引导升级 */
+function quotaHint(message: string): string {
+  return `${message}\n\n升级 Pro 可获得 10,000 次/月额度（当前套餐 100 次/月），也可等待下月自动重置。`;
+}
+
 export function CopilotModal({
   open,
   kind,
@@ -38,6 +49,7 @@ export function CopilotModal({
   const [msgs, setMsgs] = useState<CopilotMessage[]>([]);
   const [busy, setBusy] = useState(false);
   const [input, setInput] = useState('');
+  const [error, setError] = useState<CopilotError | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   const bodyRef = useRef<HTMLDivElement>(null);
   const kindRef = useRef<CopilotKind>(kind);
@@ -53,13 +65,15 @@ export function CopilotModal({
     } catch {
       setMsgs([]);
     }
+    setError(null);
+    setInput('');
   }, [open, kind]);
 
   useEffect(() => {
     if (!open) return;
     const el = bodyRef.current;
     if (el) el.scrollTop = el.scrollHeight;
-  }, [msgs, open]);
+  }, [msgs, open, error]);
 
   const persist = useCallback((next: CopilotMessage[]) => {
     try {
@@ -72,40 +86,52 @@ export function CopilotModal({
     }
   }, []);
 
+  const patchLast = useCallback((content: string) => {
+    setMsgs((prev) => {
+      if (!prev.length) return prev;
+      const next = prev.slice();
+      next[next.length - 1] = { role: 'assistant', content };
+      return next;
+    });
+  }, []);
+
   const runStream = useCallback(
     async (history: CopilotMessage[]) => {
       setBusy(true);
+      setError(null);
       setMsgs((prev) => [...prev, { role: 'assistant', content: '' }]);
       const ctrl = new AbortController();
       abortRef.current = ctrl;
       let acc = '';
+
       try {
-        await streamCopilot(
-          { messages: history, context },
-          (chunk) => {
+        await streamSSE({
+          path: '/ai/copilot',
+          body: { messages: history, context: { ...context, kind: kindRef.current } },
+          signal: ctrl.signal,
+          onDelta: (chunk) => {
             acc += chunk;
-            setMsgs((prev) => {
-              const next = prev.slice();
-              if (next.length) next[next.length - 1] = { role: 'assistant', content: acc };
-              return next;
-            });
+            patchLast(acc);
           },
-          ctrl.signal,
-        );
-        if (!acc) {
-          setMsgs((prev) => {
-            const next = prev.slice();
-            if (next.length) next[next.length - 1] = { role: 'assistant', content: '（无返回内容）' };
-            return next;
-          });
+          onErrorEvent: (payload) => setError({ code: payload.code, message: payload.message }),
+        });
+
+        if (!acc && !ctrl.signal.aborted) {
+          setError({ code: 'EMPTY_RESPONSE', message: '模型未返回内容，请换个说法再试' });
         }
       } catch (e) {
-        const msg = e instanceof Error ? e.message : 'Copilot 调用失败';
-        setMsgs((prev) => {
-          const next = prev.slice();
-          if (next.length) next[next.length - 1] = { role: 'assistant', content: `⚠️ ${msg}` };
-          return next;
-        });
+        // 用户主动中断：不清空已收到的内容，只提示
+        if ((e as Error)?.name === 'AbortError' || ctrl.signal.aborted) {
+          if (!acc) patchLast('（已中断）');
+          return;
+        }
+        const apiErr = e as ApiClientError;
+        const code = apiErr?.code || 'HTTP_ERROR';
+        const message =
+          code === 'QUOTA_EXCEEDED' && apiErr?.status === 402
+            ? quotaHint(apiErr.message)
+            : apiErr?.message || 'Copilot 调用失败';
+        setError({ code, message });
       } finally {
         setBusy(false);
         abortRef.current = null;
@@ -115,7 +141,7 @@ export function CopilotModal({
         });
       }
     },
-    [context, persist],
+    [context, patchLast, persist],
   );
 
   /** 打开时若无历史，自动发出该场景的预设提问（与原型的脚本化开场对齐） */
@@ -150,6 +176,10 @@ export function CopilotModal({
     void runStream(next);
   }
 
+  function stop() {
+    abortRef.current?.abort();
+  }
+
   return (
     <Modal
       open={open}
@@ -174,18 +204,48 @@ export function CopilotModal({
             placeholder="描述你的需求，例如：帮我生成文件传输 Skill…"
             aria-label="Copilot 输入"
           />
-          <button className="send-btn" onClick={send} disabled={busy} aria-label="发送">
-            <Icon name="i-send" />
-          </button>
+          {busy ? (
+            <button className="send-btn stop" onClick={stop} aria-label="中断生成">
+              <Icon name="i-x" />
+            </button>
+          ) : (
+            <button className="send-btn" onClick={send} disabled={busy} aria-label="发送">
+              <Icon name="i-send" />
+            </button>
+          )}
         </div>
       }
     >
       <div className="chat-flow" ref={bodyRef}>
-        {msgs.map((m, i) => (
-          <div className={`msg ${m.role === 'user' ? 'me' : 'ai'}`} key={i}>
-            {m.content || (busy && i === msgs.length - 1 ? '正在解析需求并匹配 Contract Registry…' : '')}
+        {msgs.map((m, i) => {
+          const pending = busy && i === msgs.length - 1 && !m.content;
+          return (
+            <div className={`msg ${m.role === 'user' ? 'me' : 'ai'}`} key={i}>
+              {m.content ||
+                (pending ? (
+                  <span className="typing">
+                    正在解析需求并匹配 Contract Registry
+                    <i className="dot">.</i>
+                    <i className="dot">.</i>
+                    <i className="dot">.</i>
+                  </span>
+                ) : '')}
+            </div>
+          );
+        })}
+
+        {error ? (
+          <div className="msg ai copilot-error" role="alert">
+            <div className="copilot-error-title">
+              <Icon name="i-warn" />
+              <b>{error.code === 'QUOTA_EXCEEDED' ? '配额已用完' : '生成失败'}</b>
+            </div>
+            <div className="copilot-error-body">{error.message}</div>
+            <button className="copilot-retry" onClick={() => setError(null)}>
+              知道了
+            </button>
           </div>
-        ))}
+        ) : null}
       </div>
     </Modal>
   );

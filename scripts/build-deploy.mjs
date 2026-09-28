@@ -7,13 +7,16 @@
  *   backend/           后端业务实现（Cloud Functions 逻辑）
  *   shared/            前后端共享契约
  *   cloud-functions/   平台函数入口（薄转发）
+ *   agents/            平台 AI Agent 入口（POST /copilot，与后端 Copilot 共享提示词）
  *
- * 部署态（平台要求 cloud-functions/ 与依赖声明必须位于部署单元根目录）：
+ * 部署态（平台要求 cloud-functions/、agents/ 与依赖声明必须位于部署单元根目录）：
  *   dist/  ← 本脚本生成的自包含部署单元
  *     ├── app/ components/ lib/ styles/   (前端源码)
  *     ├── next.config.ts  package.json    (合并后的依赖)
  *     ├── cloud-functions/api/[[default]].ts
+ *     ├── agents/copilot/index.ts
  *     ├── backend/   shared/
+ *     ├── edgeone.json  .env.example      (平台配置 + 环境变量声明)
  *
  * 相对路径一致性：cloud-functions/api/[[default]].ts 内 `../../backend/...`
  * 在 dist/ 下解析为 dist/backend/...，与源码态一致，无需改写。
@@ -62,11 +65,23 @@ async function main() {
     if (existsSync(src)) await cp(src, path.join(DIST, f));
   }
 
-  // 2) 后端与共享契约（保持相对路径不变）
-  console.log('[build] 复制 backend/ shared/ cloud-functions/');
+  // 2) 后端、共享契约与平台 Agent（保持相对路径不变）
+  console.log('[build] 复制 backend/ shared/ cloud-functions/ agents/');
   await copyDir(path.join(ROOT, 'backend'), path.join(DIST, 'backend'));
   await copyDir(path.join(ROOT, 'shared'), path.join(DIST, 'shared'));
   await copyDir(path.join(ROOT, 'cloud-functions'), path.join(DIST, 'cloud-functions'));
+  if (existsSync(path.join(ROOT, 'agents'))) {
+    await copyDir(path.join(ROOT, 'agents'), path.join(DIST, 'agents'));
+  }
+
+  // 2.1) 平台部署配置 + 环境变量声明（根目录版本为超集，覆盖前端版本）
+  for (const f of ['edgeone.json', '.env.example']) {
+    const src = path.join(ROOT, f);
+    if (existsSync(src)) {
+      console.log(`[build] 复制 ${f} → dist/`);
+      await cp(src, path.join(DIST, f));
+    }
+  }
 
   // 3) 合并 package.json：前端依赖 + 后端依赖
   const fe = JSON.parse(await readFile(path.join(frontend, 'package.json'), 'utf8'));
