@@ -101,9 +101,12 @@ const commit = await api('POST', `/repos/${OWNER}/${REPO}/git/commits`, {
 await api('PATCH', `/repos/${OWNER}/${REPO}/git/refs/heads/${branch}`, { sha: commit.sha });
 
 try {
-  sh('update-ref', `refs/remotes/origin/${branch}`, commit.sha);
+  // 远端 commit 对象不在本地库（API 侧生成），update-ref 必然失败，静默忽略
+  execFileSync('git', ['update-ref', `refs/remotes/origin/${branch}`, commit.sha], {
+    stdio: 'ignore',
+  });
 } catch {
-  /* 远端对象不在本地，忽略 */
+  /* 忽略 */
 }
 
 console.log(`\n✅ 已推送 ${commit.sha.slice(0, 7)} → ${OWNER}/${REPO}@${branch}`);
