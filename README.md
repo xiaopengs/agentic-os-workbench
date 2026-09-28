@@ -1,60 +1,138 @@
 # Agentic OS 自动化开发工作台
 
-> 面向「人 + Agent 协作开发」的端到端商业化 SaaS · 前后端分离架构
-> Next.js 16 前端 + Cloud Functions 后端 + KV/Blob 持久化 + JWT 鉴权 + AI Copilot 流式对话
+> 面向「人 + Agent 协作开发」的端到端工作台 · **前后端分离 · 可本地部署 · 可商业化**
+> Next.js 16 + React 19 + Tailwind v4 ｜ 无框架 REST 后端 ｜ JWT + HttpOnly Cookie ｜ 多租户 · 配额 · 审计 · AI 流式对话
+
+![总览 Dashboard](docs/screenshots/home-dashboard.png)
 
 ---
 
 ## 这是什么
 
-一个把 Agent 自动化开发「可见、可控、可交付」的控制中枢。围绕七大核心矛盾（意图模糊 vs 执行精确、上下文膨胀 vs 记忆有限、自由生成 vs 合同约束、单体智能 vs 多智能体协同、模拟环境 vs 真实发布、人机信任鸿沟、迭代速度 vs 质量管控）构建，已具备**真实账号体系、服务端持久化、配额计费、审计日志、AI 流式对话**——不是演示页面。
+一个把 Agent 自动化开发「可见、可控、可交付」的控制中枢。围绕七大核心矛盾
+（意图模糊 vs 执行精确、上下文膨胀 vs 记忆有限、自由生成 vs 合同约束、
+单体智能 vs 多智能体协同、模拟环境 vs 真实发布、人机信任鸿沟、迭代速度 vs 质量管控）构建。
 
-> 原型阶段产物（单文件 `workbench.html` 与 72 项对比测试）保留在仓库中作为设计基准与视觉参照。
+**它不是演示页面**：具备真实账号体系、服务端持久化、多租户隔离、配额计费、审计日志、
+AI 流式对话。页面上每一个业务数字都来自服务端接口，不是前端写死的。
 
-## 架构：前后端分离（方案 A）
+**它能跑在最简环境**：`node scripts/start-local.mjs` 一条命令启动，
+不需要云平台、不需要登录、不需要联网。
 
-源码态关注点分离，部署态构建为自包含单元：
+---
+
+## 页面预览
+
+| 总览 Dashboard | AI Copilot 流式对话 |
+|---|---|
+| ![总览](docs/screenshots/home-dashboard.png) | ![AI Copilot](docs/screenshots/ai-copilot.png) |
+
+| 工作流 | 技能 |
+|---|---|
+| ![工作流](docs/screenshots/workflows.png) | ![技能](docs/screenshots/skills.png) |
+
+| 合同登记 | 设备集群 |
+|---|---|
+| ![合同](docs/screenshots/contracts.png) | ![设备](docs/screenshots/devices.png) |
+
+| 登录页 |
+|---|
+| ![登录](docs/screenshots/login.png) |
+
+> 截图由 `node scripts/capture-screenshots.mjs` 从**真实运行的系统**自动截取
+> （自动注册演示账号 → 登录 → 逐页截图 → 触发一次 AI 流式对话）。
+
+---
+
+## 架构：同仓库逻辑分离 + 双形态部署
+
+**源码态关注点分离，部署态自包含，业务代码零平台依赖。**
 
 ```
-源码态                              部署态 dist/（脚本生成）
-├── frontend/   Next.js 16          ├── app/ components/ lib/ styles/
-├── backend/    Cloud Functions 逻辑 ├── backend/  shared/  agents/
-├── shared/     前后端共享契约       ├── cloud-functions/api/[[default]].ts
-├── agents/     AI Agent            └── package.json（依赖合并）
-└── scripts/build-deploy.mjs
+源码态                                    部署态（同一套业务代码）
+├── frontend/   Next.js 16 前端      ┌──▶ A. 本地最小化（推荐）
+├── backend/    REST API 业务逻辑     │      Node HTTP :8787
+│   ├── functions/  路由 + 业务       │      + 本地 JSON 文件
+│   ├── lib/        领域逻辑          │      零框架 · 零平台 SDK
+│   └── adapter/    Node 适配器       │
+├── shared/     前后端共享契约        └──▶ B. EdgeOne Makers（可选）
+├── agents/     AI Agent                   Cloud Functions /api/*
+├── cloud-functions/  平台入口              + KV / Blob
+└── scripts/build-deploy.mjs  →  dist/ 自包含部署单元
 ```
 
-**为什么同域统一部署**：零跨域、HttpOnly Cookie 会话天然共享、前后端一次原子生效；契约优先（`shared/types.ts`）意味着将来要拆成物理分离的两套服务，前端只需换 `API_BASE`。详见 [docs/05](docs/05-商业化架构选型与技术方案.md)。
+### 关键设计：三个抽象层让平台变得可替换
+
+| 抽象 | 接口 | 实现 |
+|---|---|---|
+| 存储 | `StoreDriver`（get/put/del/list） | KV → Blob → **本地文件**（前者失效自动兜底） |
+| 配置 | `Env` | `context.env` → `process.env` |
+| 运行时 | `handleRequest(ApiCtx)` | `adapter/node.ts`（Node）｜ `cloud-functions/`（EdgeOne） |
+
+> **业务代码（`functions/` + `lib/`）里没有一行平台专属逻辑。**
+> 平台差异全部收敛在 `adapter/` 与 `cloud-functions/` 两处薄壳中。
+> 因此去平台化时只新增了一个存储驱动实现，上层代码零改动。
+
+### 为什么不直接上框架
+
+整个 API 只有 18 条路由、7 个业务模块。手写路由表（`route(method, path, handler)`
++ 冒号参数匹配）不到 40 行，省掉一层依赖与冷启动开销；
+handler 入参是自定义的 `ApiCtx`，与任何框架解耦——这正是能同时跑在
+Node 与 Cloud Functions 上的前提。
+
+详见 [docs/02-架构设计](./docs/02-架构设计.md)。
+
+---
 
 ## 核心能力
 
 | 领域 | 实现 |
 |---|---|
-| 账号体系 | bcrypt 密码哈希 + JWT（jose）+ HttpOnly Cookie，注册/登录/登出/会话保持 |
-| 多租户隔离 | 所有业务数据以 `userId` 为前缀，**服务端强制注入**，客户端不可伪造 |
-| 持久化 | KV 优先、Blob 回退；禁止内存态（云函数重启不丢数据） |
-| 业务资源 | 工作流 CRUD、Trace 写入查询、Skill、Contract、Device |
+| 账号体系 | bcrypt(cost 10) + JWT(jose/HS256) + HttpOnly Cookie；Cookie 优先、Bearer 兜底；服务端会话表支持主动失效 |
+| 多租户隔离 | 所有业务数据以 `uid` 为前缀，**uid 由服务端从会话解出**，客户端传入的 id 只能作为末段，无法越权 |
+| 持久化 | KV → Blob → 本地文件三级；**禁止内存态**（进程重启不丢数据） |
+| 业务资源 | 工作流 CRUD（五端点）、Trace 写入/查询、技能、合同、设备 |
 | 配额计费 | free 100 runs/月、pro 10000 runs/月，超额 402 `QUOTA_EXCEEDED` |
-| 审计日志 | 关键写操作全量留痕，可回溯 |
-| AI Copilot | SSE 流式对话，走平台 AI Gateway，打字机渲染 + 中断 + 配额专属提示 |
-| 前端体验 | 一比一复刻设计稿：Design Tokens、38 个内联 SVG、五断点响应式 |
+| 审计日志 | 关键写操作全量留痕；前端告警卡片复用同一份数据 |
+| AI Copilot | SSE 流式、逐 token 打字机、可中断、配额/鉴权/上游三类错误分别处理；支持本地模拟流离线验证 |
+| 前端体验 | Design Tokens 一比一复刻设计稿、内联 SVG 图标体系、五断点响应式 |
 
-## 页面
+### 纯展示 vs 真实数据
 
-总览 Dashboard（KPI 卡 / Agent Lifecycle 六节点流水线 / Simulation Lab / Live Trace / Recent Workflows / AI Copilot / Attention / Next Step / Canary 灰度）、工作流、技能、合同、设备、设置，以及登录/注册。
+| 数据 | 来源 |
+|---|---|
+| KPI（合同 / Skills / 设备 / 运行中测试） | `/api/contracts` `/api/skills` `/api/devices` `/api/workflows` **真实计数** |
+| 趋势百分比、P95 耗时 | 由 `/api/traces` 的历史序列**真实计算**（新半段均值 vs 旧半段均值） |
+| 链路记录、告警列表、用量、配额 | `/api/traces` `/api/audit` `/api/usage` |
+| 端侧指标（Memory / NPU / Power） | 浏览器内演示态（服务端无数据源），UI 上明确区分 |
+
+---
 
 ## 快速开始
 
-### A. 本地最小化部署（推荐先跑起来，无需任何云平台）
+### A. 本地最小化部署（推荐：一条命令，无需任何云平台）
 
 ```bash
 node scripts/start-local.mjs
 ```
 
-一条命令启动：后端 API `http://127.0.0.1:8787/api` + 前端 `http://127.0.0.1:3000`。
-数据落在 `./.data/store.json`，**无需登录、无需联网、无需 EdgeOne**。详见 [docs/07-本地部署与去平台化.md](docs/07-本地部署与去平台化.md)。
+启动后：
 
-### B. 部署到 EdgeOne Makers
+| 服务 | 地址 |
+|---|---|
+| 前端应用 | http://127.0.0.1:3000 |
+| 后端 API | http://127.0.0.1:8787/api |
+
+- 数据落在 `./.data/store.json`（纯文本，可直接查看 / 编辑，删除即重置）
+- **无需登录、无需联网、无需 EdgeOne**；AI Copilot 默认走本地模拟流
+- 停止：`Ctrl+C`（两个子进程一并退出）
+- 端口可用 `API_PORT` / `WEB_PORT` 覆盖
+
+仅需 4 个运行期依赖：`bcryptjs`、`jose`、`tsx` + 前端 next/react/tailwind/swr。
+
+> 首次运行需先 `npm install`（根目录）与 `cd frontend && npm install`。
+
+### B. 部署到 EdgeOne Makers（可选）
 
 ```bash
 npm install -g edgeone@latest --registry=https://registry.npmmirror.com
@@ -64,51 +142,118 @@ cd dist && npm install
 edgeone makers deploy -n <项目名> --json
 ```
 
-**必配环境变量**：`JWT_SECRET`（缺失会返回 500 `SERVER_MISCONFIG`——故意如此，杜绝硬编码密钥）。
-`AI_GATEWAY_API_KEY` / `AI_GATEWAY_BASE_URL` 由平台自动注入。
+**必配环境变量**：`JWT_SECRET`（缺失直接 500 `SERVER_MISCONFIG`——**故意如此，杜绝硬编码密钥上线**）。
+`AI_GATEWAY_API_KEY` / `AI_GATEWAY_BASE_URL` 由平台自动注入，自托管时自填。
 
-完整说明见 [docs/06-部署指南.md](docs/06-部署指南.md)。
+完整说明见 [docs/06-部署指南](./docs/06-部署指南.md) 与
+[docs/07-本地部署与去平台化](./docs/07-本地部署与去平台化.md)。
 
-> 两种形态共用同一套业务代码：平台形态走 `cloud-functions` 的 `onRequest(context)`，
-> 本地形态走 `backend/adapter/node.ts`（把 Node `(req,res)` 翻译成同样的 context）。
-> 前端只需切换 `NEXT_PUBLIC_API_BASE`。
+---
 
 ## API 契约
 
 ```
-POST /api/auth/register  POST /api/auth/login  POST /api/auth/logout  GET /api/auth/me
-GET|POST         /api/workflows        GET|PATCH|DELETE /api/workflows/:id
-GET|POST         /api/traces           GET /api/skills  /api/contracts  /api/devices
-GET              /api/usage  /api/audit  /health
-POST             /api/ai/copilot       ← SSE 流式
+POST   /api/auth/register     POST /api/auth/login    POST /api/auth/logout   GET /api/auth/me
+GET    /api/workflows         POST /api/workflows
+GET    /api/workflows/:id     PATCH /api/workflows/:id  DELETE /api/workflows/:id
+GET    /api/traces            POST /api/traces
+GET    /api/skills            GET /api/contracts       GET /api/devices
+GET    /api/usage             GET /api/audit           GET /api/health
+POST   /api/ai/copilot        ← SSE 流式
 ```
 
-统一信封：`{ ok: true, data: T } | { ok: false, error: { code, message } }`
+**统一信封**：
+
+```ts
+type ApiResp<T> = { ok: true; data: T } | { ok: false; error: { code: string; message: string } }
+```
+
+**错误码**：`VALIDATION_ERROR`(400) · `UNAUTHORIZED`(401) · `QUOTA_EXCEEDED`(402) ·
+`NOT_FOUND`(404) · `CONFLICT`(409) · `SERVER_MISCONFIG`(500) · `AI_UNAVAILABLE`(503)
+
+**鉴权请求顺序（固定）**：`鉴权 → 校验 → 配额 → 业务 → 审计`。
+AI 流式接口例外，顺序为 `Gateway 预检 → 配额 → 开流`——配额必须在 HTTP 200 提交前拦截，
+否则 SSE 一旦开始就无法再用 402 表达超额。
+
+---
 
 ## 测试
 
 ```bash
-# 端到端（需先启动 dev server）
-node tests/e2e.mjs
+# 1) 启动本地服务
+node scripts/start-local.mjs
+
+# 2) 后端冒烟（独立进程，脱离平台可跑）
+npm run test:api
+
+# 3) 端到端（真实 Chromium）
+node tests/e2e.mjs http://127.0.0.1:3000 http://127.0.0.1:8787/api
+
+# 4) 类型门禁
+npm run typecheck:backend
+
+# 5) 生成 README 截图
+node scripts/capture-screenshots.mjs http://127.0.0.1:3000 http://127.0.0.1:8787/api
 ```
 
-16 组断言覆盖：未登录拦截、注册/弱密码/重复注册/无效 token、登录会话、工作流创建→持久化→更新→删除、Trace 写入、用量统计、审计日志、登出失效、运行时零 JS 错误。
+| 套件 | 用例数 | 结果 |
+|---|---|---|
+| 后端冒烟（mock 存储驱动，跑真实业务逻辑） | 34 | ✅ 34/34 |
+| 端到端（真实浏览器全链路） | 22 | ✅ 22/22 |
+| 类型门禁 + 前端构建 | 9 条路由 | ✅ 全绿 |
+
+端到端覆盖：未登录拦截 → 401 → 注册 201 → 弱密码 400 → 重复注册 409 → 登录 →
+创建工作流 → 持久化校验 → 更新生效 → Trace 写入 → 用量接口 → 审计有记录 →
+删除 → 删除后不可见 → 无效 token 401 → 登出后 401 → 零 JS 错误。
+
+> 两个套件都**不依赖任何云平台**，因此每次改动都能立刻本地验证。
+> 详见 [docs/04-测试报告](./docs/04-测试用例与对比修正报告.md) §9。
+
+---
+
+## 目录结构
+
+```
+agentic-os-workbench/
+├── frontend/                    # Next.js 16 前端（可独立构建）
+│   ├── app/                     #   App Router：(workbench)/ 路由组 + login/register
+│   ├── components/              #   layout / dashboard / aside / modals / ui / icons
+│   └── lib/                     #   api-client / hooks(SWR) / auth / nav / simulation
+├── backend/                     # REST API 业务逻辑（零平台依赖）
+│   ├── functions/               #   router + 7 个业务模块（18 条路由）
+│   ├── lib/                     #   kv / store / auth / quota / audit / validate / sse / ai-gateway
+│   └── adapter/                 #   node.ts（Node 运行时适配）/ server.ts（本地入口）
+├── shared/types.ts              # 前后端共享契约（唯一事实源）
+├── agents/copilot/              # AI Agent 运行时入口
+├── cloud-functions/             # EdgeOne 平台入口（薄转发，可选）
+├── scripts/                     # build-deploy / start-local / gh-push / capture-screenshots
+├── tests/                       # api-smoke.ts（34 项）· e2e.mjs（22 项）
+├── docs/                        # 01-07 工程文档 + screenshots/
+└── workbench.html               # 原型阶段产物（设计基准，已归档）
+```
+
+---
 
 ## 文档
 
-| 文档 | 内容 |
-|---|---|
-| [01-需求拆解](docs/01-需求拆解与需求文档.md) | 七大矛盾→能力域映射、FR 规格 |
-| [02-架构设计](docs/02-架构设计.md) | 五层架构、模块划分、数据结构 |
-| [03-方案设计](docs/03-方案设计.md) | Design Tokens、区域实现规格 |
-| [04-测试报告](docs/04-测试用例与对比修正报告.md) | 72 用例对比修正（原型阶段） |
-| [05-架构选型](docs/05-商业化架构选型与技术方案.md) | 三方案对比、技术栈、KV 设计、API 契约、商业化矩阵 |
-| [06-部署指南](docs/06-部署指南.md) | 构建、环境变量、预览、上线、回滚、故障排查 |
+| 文档 | 内容 | 状态 |
+|---|---|---|
+| [01-需求拆解](./docs/01-需求拆解与需求文档.md) | 七大矛盾 → 能力域映射、FR 规格、分期方案 | 原型阶段（含 Phase 1 增补） |
+| [02-架构设计](./docs/02-架构设计.md) | **当前架构**：分层、存储抽象、请求生命周期、安全、测试架构 | **当前有效** |
+| [03-方案设计](./docs/03-方案设计.md) | **当前方案**：设计令牌、逐区域实现、前后端实现方案 | **当前有效** |
+| [04-测试报告](./docs/04-测试用例与对比修正报告.md) | 原型阶段 72 项对比修正 + **Phase 1 的 56 项自动断言** | 含当前结果 |
+| [05-架构选型](./docs/05-商业化架构选型与技术方案.md) | 三方案对比、技术栈、KV 设计、API 契约、商业化矩阵 | **当前有效** |
+| [06-部署指南](./docs/06-部署指南.md) | EdgeOne 构建、环境变量、预览、上线、回滚、排障 | 可选路径 |
+| [07-本地部署与去平台化](./docs/07-本地部署与去平台化.md) | 去平台化拆解、本地部署、自托管进阶 | **当前有效** |
+
+---
 
 ## 路线图
 
-- **已完成**：账号体系、多租户持久化、配额计费、审计、AI Copilot 流式对话、E2E 测试
-- **下一步**：订阅支付接入（Pro 升级）、团队协作与角色权限、Trace 回放与回归对比、多设备 Device Farm
+- **已完成**：账号体系、多租户持久化、配额计费、审计日志、AI Copilot 流式对话、
+  本地最小化部署、56 项自动测试
+- **下一步**：订阅支付接入（Pro 升级）、团队协作与角色权限、Trace 回放与回归对比、
+  可替换存储驱动（SQLite / Postgres）、列表分页
 
 ---
 

@@ -69,7 +69,7 @@ export function createNodeServer(): http.Server {
       nodeRes.writeHead(204, {
         'Access-Control-Allow-Origin': origin || '*',
         'Access-Control-Allow-Methods': 'GET,POST,PATCH,DELETE,OPTIONS',
-        'Access-Control-Allow-Headers': 'Content-Type,Authorization',
+        'Access-Control-Allow-Headers': 'Content-Type,Authorization,makers-conversation-id',
         'Access-Control-Allow-Credentials': 'true',
         'Access-Control-Max-Age': '86400',
       });
