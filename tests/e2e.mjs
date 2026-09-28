@@ -98,12 +98,26 @@ try {
   check('重复注册返回 409', dup.status === 409, `实际 ${dup.status}`);
 
   /* ── 6. 登录后会话可用（走浏览器 Cookie） ────────────────── */
-  await page.goto(`${BASE}/login`, { waitUntil: 'domcontentloaded' });
-  await page.fill('input[type="email"]', email);
-  await page.fill('input[type="password"]', password);
-  await page.click('button[type="submit"]');
-  await page.waitForTimeout(2500);
-  check('登录后进入工作台（非 /login）', !page.url().includes('/login'), page.url());
+  // 注意：上面的注册走了 ctx.request，Set-Cookie 会写进共享的 ctx。
+  // 若复用主 page 访问 /login，前端守卫会认为已登录并重定向到工作台，
+  // 登录表单根本不会出现（dev 模式水合快、生产模式水合慢，表现不稳定）。
+  // 因此这里用独立干净上下文，模拟“一台新设备来登录”。
+  const loginCtx = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+  try {
+    const loginPage = await loginCtx.newPage();
+    await loginPage.goto(`${BASE}/login`, { waitUntil: 'domcontentloaded' });
+    await loginPage.fill('input[type="email"]', email);
+    await loginPage.fill('input[type="password"]', password);
+    await loginPage.click('button[type="submit"]');
+    await loginPage.waitForTimeout(2500);
+    check('登录后进入工作台（非 /login）', !loginPage.url().includes('/login'), loginPage.url());
+
+    // 把登录态同步回主 ctx，供后续浏览器侧用例复用。
+    const cookies = await loginCtx.cookies();
+    if (cookies.length) await ctx.addCookies(cookies);
+  } finally {
+    await loginCtx.close();
+  }
 
   /* ── 7. 创建工作流（真实持久化） ────────────────────────── */
   const wfName = `E2E 工作流 ${Date.now()}`;

@@ -16,7 +16,7 @@ import { fileURLToPath } from 'node:url';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const OUT = path.join(ROOT, 'docs', 'screenshots');
-const BASE = process.argv[2] || 'http://127.0.0.1:3000';
+const BASE = process.argv[2] || 'http://127.0.0.1:3737';
 const API = String(process.argv[3] || BASE).replace(/\/api\/?$/, '').replace(/\/+$/, '');
 
 const email = `shot_${Date.now()}@demo.local`;

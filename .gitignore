@@ -39,3 +39,4 @@ credential*.json
 
 # EdgeOne Makers 构建产物（运行时自动生成，禁止手改）
 .edgeone/
+app-dist/

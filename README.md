@@ -120,7 +120,7 @@ node scripts/start-local.mjs
 
 | 服务 | 地址 |
 |---|---|
-| 前端应用 | http://127.0.0.1:3000 |
+| 前端应用 | http://127.0.0.1:3737 |
 | 后端 API | http://127.0.0.1:8787/api |
 
 - 数据落在 `./.data/store.json`（纯文本，可直接查看 / 编辑，删除即重置）
@@ -132,7 +132,19 @@ node scripts/start-local.mjs
 
 > 首次运行需先 `npm install`（根目录）与 `cd frontend && npm install`。
 
-### B. 部署到 EdgeOne Makers（可选）
+### B. 单端口自包含部署（生产形态，推荐用于托管 / 容器）
+
+前端页面与后端 API 合并进**同一个进程、同一个端口（默认 3737）**：
+
+```bash
+npm run build:app                # 生成 app-dist/：依赖已内置、.env（含随机 JWT_SECRET）已自动生成
+cd app-dist && npm start         # 监听 0.0.0.0:3737（PORT 可覆盖）
+```
+
+- 唯一入口 `server.mjs`：`/api/*` → 后端，其余 → Next 生产产物；前后端同源，无 CORS
+- ⚠️ 切勿在 `app-dist/` 内裸 `npm install`（会破坏 standalone 的裁剪版 next），详见 [docs/07](./docs/07-本地部署与去平台化.md)
+
+### C. 部署到 EdgeOne Makers（可选）
 
 ```bash
 npm install -g edgeone@latest --registry=https://registry.npmmirror.com
@@ -187,13 +199,13 @@ node scripts/start-local.mjs
 npm run test:api
 
 # 3) 端到端（真实 Chromium）
-node tests/e2e.mjs http://127.0.0.1:3000 http://127.0.0.1:8787/api
+node tests/e2e.mjs http://127.0.0.1:3737 http://127.0.0.1:8787/api
 
 # 4) 类型门禁
 npm run typecheck:backend
 
 # 5) 生成 README 截图
-node scripts/capture-screenshots.mjs http://127.0.0.1:3000 http://127.0.0.1:8787/api
+node scripts/capture-screenshots.mjs http://127.0.0.1:3737 http://127.0.0.1:8787/api
 ```
 
 | 套件 | 用例数 | 结果 |

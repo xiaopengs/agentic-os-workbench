@@ -6,7 +6,7 @@
  *
  * 启动两个进程：
  *   ① 后端 API    http://127.0.0.1:8787/api   （Node 标准库 HTTP + 本地 JSON 文件持久化）
- *   ② 前端应用    http://127.0.0.1:3000       （Next.js，API 指向 ①）
+ *   ② 前端应用    http://127.0.0.1:3737       （Next.js，API 指向 ①）
  *
  * 数据落在 ./.data/store.json，删掉即恢复初始状态。
  * 停止：Ctrl+C（两个子进程一并退出）
@@ -19,7 +19,7 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const FRONTEND = path.join(ROOT, 'frontend');
 
 const API_PORT = process.env.API_PORT || '8787';
-const WEB_PORT = process.env.WEB_PORT || '3000';
+const WEB_PORT = process.env.WEB_PORT || '3737';
 const API_BASE = `http://127.0.0.1:${API_PORT}/api`;
 
 const children = [];

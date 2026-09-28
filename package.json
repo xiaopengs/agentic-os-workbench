@@ -2,12 +2,13 @@
   "name": "agentic-os-workbench",
   "version": "0.1.0",
   "private": true,
-  "description": "Agentic OS 自动化开发工作台 · 同仓库逻辑分离（frontend/ + backend/ + shared/）",
+  "description": "Agentic OS \u81ea\u52a8\u5316\u5f00\u53d1\u5de5\u4f5c\u53f0 \u00b7 \u540c\u4ed3\u5e93\u903b\u8f91\u5206\u79bb\uff08frontend/ + backend/ + shared/\uff09",
   "scripts": {
     "typecheck:backend": "tsc --noEmit -p backend/tsconfig.json",
     "test:api": "tsx tests/api-smoke.ts",
     "test:e2e": "node tests/e2e.mjs",
-    "build:deploy": "node scripts/build-deploy.mjs"
+    "build:deploy": "node scripts/build-deploy.mjs",
+    "build:app": "node scripts/build-app.mjs"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",
