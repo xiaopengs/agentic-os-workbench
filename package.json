@@ -4,7 +4,10 @@
   "private": true,
   "description": "Agentic OS 自动化开发工作台 · 同仓库逻辑分离（frontend/ + backend/ + shared/）",
   "scripts": {
-    "typecheck:backend": "tsc --noEmit -p backend/tsconfig.json"
+    "typecheck:backend": "tsc --noEmit -p backend/tsconfig.json",
+    "test:api": "tsx tests/api-smoke.ts",
+    "test:e2e": "node tests/e2e.mjs",
+    "build:deploy": "node scripts/build-deploy.mjs"
   },
   "dependencies": {
     "@edgeone/pages-blob": "^0.0.18",
@@ -13,6 +16,7 @@
   },
   "devDependencies": {
     "@types/node": "^20.14.0",
+    "tsx": "^4.23.15",
     "typescript": "^5.6.3"
   },
   "engines": {
