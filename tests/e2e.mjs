@@ -11,7 +11,13 @@
  */
 import { chromium } from 'playwright';
 
+/**
+ * 参数：
+ *   argv[2] = 前端地址（默认 http://127.0.0.1:8088）
+ *   argv[3] = API 基址（默认同前端；前后端分离部署时传后端地址，如 http://127.0.0.1:8787）
+ */
 const BASE = process.argv[2] || 'http://127.0.0.1:8088';
+const API_ROOT = process.argv[3] || BASE;
 const results = [];
 let failed = 0;
 
@@ -22,7 +28,7 @@ function check(name, ok, detail = '') {
 }
 
 async function api(ctx, path, options = {}) {
-  const r = await ctx.request.fetch(`${BASE}${path}`, options);
+  const r = await ctx.request.fetch(`${API_ROOT}${path}`, options);
   let body = null;
   try {
     body = await r.json();
@@ -42,7 +48,12 @@ const page = await ctx.newPage();
 const pageErrors = [];
 page.on('pageerror', (e) => pageErrors.push(String(e)));
 page.on('console', (m) => {
-  if (m.type() === 'error') pageErrors.push('console: ' + m.text());
+  if (m.type() !== 'error') return;
+  const text = m.text();
+  // 网络资源返回 401/404 是预期的业务响应（如未登录探测 /auth/me），
+  // 属于 HTTP 状态而非 JS 异常，不计入 JS 错误统计。
+  if (/Failed to load resource/i.test(text)) return;
+  pageErrors.push('console: ' + text);
 });
 
 const email = `e2e_${Date.now()}@test.local`;
@@ -152,12 +163,16 @@ try {
     !after.body?.data?.find?.((w) => w.id === wfId),
   );
 
-  /* ── 14. 无效应 token 应被拒 ─────────────────────────────── */
-  const bad = await api(ctx, '/api/workflows', {
+  /* ── 14. 无效 token 应被拒 ─────────────────────────────────── */
+  // 必须用「干净上下文」：后端鉴权是 Cookie 优先、Bearer 兜底，
+  // 若沿用已登录的 ctx 会命中有效 Cookie 而通过，测不出无效 token。
+  const cleanCtx = await browser.newContext();
+  const bad = await api(cleanCtx, '/api/workflows', {
     method: 'GET',
     headers: { Authorization: 'Bearer invalid.token.here' },
   });
   check('无效 token 返回 401', bad.status === 401, `实际 ${bad.status}`);
+  await cleanCtx.close();
 
   /* ── 15. 登出后会话失效 ─────────────────────────────────── */
   await api(ctx, '/api/auth/logout', { method: 'POST' });

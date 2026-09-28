@@ -107,7 +107,11 @@ function match(
 
 /* ── 平台入口（cloud-functions 由 shim 调用） ───────────────── */
 export async function handleRequest(context: any): Promise<Response> {
-  return guard(async () => {
+  // origin 在 guard 之外解析：错误响应同样需要 CORS 头，
+  // 否则跨域（前后端分离部署）时 401/400/409 会被浏览器拦截，前端拿不到真实错误码。
+  const origin = getHeader(context?.request ?? context ?? {}, 'origin');
+
+  const response = await guard(async () => {
     const env = (context?.env || {}) as Env;
     const req = context?.request ?? context ?? {};
 
@@ -115,8 +119,6 @@ export async function handleRequest(context: any): Promise<Response> {
     const url = safeUrl(req?.url ?? context?.url);
     const pathname = url.pathname.replace(/\/+$/, '') || '/';
     const segs = pathname.replace(/^\/api\/?/, '').split('/').filter(Boolean);
-    // 兼容 Headers API 与 plain object 两种 header 形态
-    const origin = getHeader(req, 'origin');
 
     // 预检请求
     if (method === 'OPTIONS') {
@@ -147,20 +149,20 @@ export async function handleRequest(context: any): Promise<Response> {
     if (!found) throw notFound(`接口不存在：${method} ${pathname}`);
     ctx.params = found.params;
 
-    const response = await found.handler(ctx);
-
-    // 统一附加 CORS（同域部署时 origin 为空，不产生副作用）
-    const cors = corsHeaders(origin);
-    Object.entries(cors).forEach(([key, value]) => {
-      try {
-        response.headers.set(key, value);
-      } catch {
-        /* 只读响应头忽略 */
-      }
-    });
-
-    return response;
+    return await found.handler(ctx);
   });
+
+  // 统一附加 CORS（成功与错误响应一视同仁；同域部署时 origin 为空，不产生副作用）
+  const cors = corsHeaders(origin);
+  Object.entries(cors).forEach(([key, value]) => {
+    try {
+      response.headers.set(key, value);
+    } catch {
+      /* 只读响应头忽略 */
+    }
+  });
+
+  return response;
 }
 
 export default handleRequest;
