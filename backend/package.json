@@ -9,7 +9,6 @@
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
-    "@edgeone/pages-blob": "^0.0.14",
     "bcryptjs": "^3.0.2",
     "jose": "^5.9.6"
   },
@@ -19,5 +18,8 @@
   },
   "engines": {
     "node": ">=20"
+  },
+  "optionalDependencies": {
+    "@edgeone/pages-blob": "^0.0.14"
   }
 }

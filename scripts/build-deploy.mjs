@@ -97,6 +97,11 @@ async function main() {
       'build:deploy': 'node scripts/build-deploy.mjs',
     },
     dependencies: { ...(fe.dependencies || {}), ...(root.dependencies || {}) },
+    // 平台 SDK 为可选依赖：本地最小化部署不需要它（走本地文件驱动）
+    optionalDependencies: {
+      ...(fe.optionalDependencies || {}),
+      ...(root.optionalDependencies || {}),
+    },
     devDependencies: { ...(fe.devDependencies || {}), ...(root.devDependencies || {}) },
     engines: fe.engines || root.engines || { node: '>=20' },
   };

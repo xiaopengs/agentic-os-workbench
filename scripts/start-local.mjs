@@ -49,6 +49,8 @@ console.log(`数据文件 : ${path.join(ROOT, '.data/store.json')}\n`);
 run('api', 'npx', ['tsx', 'backend/adapter/server.ts'], ROOT, {
   PORT: API_PORT,
   LOCAL_STORE: 'file',
+  // 未配置 AI Gateway 时用本地模拟流，保证 AI Copilot 链路可完整演示（不联网）
+  LOCAL_AI_MOCK: process.env.LOCAL_AI_MOCK || '1',
   NODE_ENV: process.env.NODE_ENV || 'development',
 });
 

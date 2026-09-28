@@ -31,8 +31,14 @@ export function gatewayConfig(env: Env): GatewayConfig {
   const baseUrl = String(getEnv(env, 'AI_GATEWAY_BASE_URL') || '').replace(/\/+$/, '');
 
   if (!apiKey || !baseUrl) {
+    // 去平台化：本地最小化部署（LOCAL_AI_MOCK=1）时不需要真实 Gateway，
+    // 走本地模拟流，保证 SSE/配额/审计整条链路仍可端到端验证。
+    if (localAiMockEnabled(env)) {
+      return { apiKey: 'local-mock', baseUrl: LOCAL_MOCK_BASE, model: 'local-mock' };
+    }
     throw aiUnavailable(
-      'AI Gateway 未就绪：平台未注入 AI_GATEWAY_API_KEY / AI_GATEWAY_BASE_URL。请在项目环境变量中声明后重新部署。',
+      'AI Gateway 未就绪：未检测到 AI_GATEWAY_API_KEY / AI_GATEWAY_BASE_URL。' +
+        '云端部署请在环境变量中声明；本地最小化部署可设置 LOCAL_AI_MOCK=1 使用本地模拟流。',
     );
   }
 
@@ -45,6 +51,7 @@ export function gatewayConfig(env: Env): GatewayConfig {
 
 /** 是否存在可用的 Gateway 配置（用于 /health 之类的探测，不抛错） */
 export function hasGateway(env: Env): boolean {
+  if (localAiMockEnabled(env)) return true;
   return Boolean(getEnv(env, 'AI_GATEWAY_API_KEY') && getEnv(env, 'AI_GATEWAY_BASE_URL'));
 }
 
@@ -88,6 +95,8 @@ export async function openChat(
   body: ChatRequestBody,
   signal?: AbortSignal,
 ): Promise<Response> {
+  if (cfg.baseUrl === LOCAL_MOCK_BASE) return openLocalMockChat(body, signal);
+
   const controller = new AbortController();
   const timeout = setTimeout(() => {
     try {
@@ -243,4 +252,92 @@ export async function chatOnce(
 export function estimateTokens(text: string): number {
   if (!text) return 0;
   return Math.max(1, Math.ceil(text.length / 2.5));
+}
+
+/* ── 本地模拟流（去平台化） ─────────────────────────────────────
+ * 仅在 LOCAL_AI_MOCK=1 且未配置 AI Gateway 时启用。
+ * 目的：本地最小化部署不依赖任何外部 LLM 服务，也能端到端验证
+ *       SSE 流式协议 / 配额扣减 / 审计落库 / 前端渲染 全链路。
+ * 产出与 OpenAI /chat/completions 完全同构的 SSE 帧，因此上层
+ * iterChatStream 无需任何改动即可解析。
+ * ------------------------------------------------------------ */
+
+/** 本地模拟模式下的伪 baseUrl（用于分流，不发起真实网络请求） */
+export const LOCAL_MOCK_BASE = 'local://mock';
+
+/** 是否开启本地模拟流 */
+export function localAiMockEnabled(env: Env): boolean {
+  const v = String(getEnv(env, 'LOCAL_AI_MOCK') || '').toLowerCase();
+  return v === '1' || v === 'true' || v === 'on';
+}
+
+/** 依据最后一条用户消息生成确定性回复（不联网、不随机） */
+function mockReply(messages: ChatMessage[]): string {
+  const last = [...messages].reverse().find((m) => m.role === 'user');
+  const q = (last?.content || '').trim();
+  return [
+    `【本地模拟流 · LOCAL_AI_MOCK】当前未连接 AI Gateway，以下为离线占位回复，用于验证链路通畅。`,
+    ``,
+    q ? `你问的是：${q.slice(0, 200)}` : `（未捕获到用户消息）`,
+    ``,
+    `我理解的意图可以拆成三步：`,
+    `1. 明确目标与约束 —— 把需求收敛成可验收的条目；`,
+    `2. 拆解执行路径 —— 选最小可行方案，先跑通再优化；`,
+    `3. 定义验收标准 —— 用测试用例固化结果，避免回归。`,
+    ``,
+    `接入真实模型：设置 AI_GATEWAY_API_KEY / AI_GATEWAY_BASE_URL 后重启即可，业务代码无需改动。`,
+  ].join('\n');
+}
+
+/** 构造一个本地 SSE 响应（200 + text/event-stream），逐 token 推送 */
+export function openLocalMockChat(body: ChatRequestBody, signal?: AbortSignal): Response {
+  const text = mockReply(body.messages || []);
+  // 按 2~6 字切片，模拟真实模型的增量节奏
+  const chunks: string[] = [];
+  for (let i = 0; i < text.length; ) {
+    const n = 2 + (i % 5);
+    chunks.push(text.slice(i, i + n));
+    i += n;
+  }
+
+  const encoder = new TextEncoder();
+  const frame = (obj: unknown) => encoder.encode(`data: ${JSON.stringify(obj)}\n\n`);
+
+  const stream = new ReadableStream<Uint8Array>({
+    async start(controller) {
+      try {
+        for (const piece of chunks) {
+          if (signal?.aborted) break;
+          controller.enqueue(
+            frame({ choices: [{ delta: { content: piece }, finish_reason: null }] }),
+          );
+          await new Promise((r) => setTimeout(r, 18));
+        }
+        controller.enqueue(
+          frame({
+            choices: [{ delta: {}, finish_reason: 'stop' }],
+            usage: {
+              prompt_tokens: estimateTokens(body.messages?.map((m) => m.content).join('') || ''),
+              completion_tokens: estimateTokens(text),
+              total_tokens:
+                estimateTokens(body.messages?.map((m) => m.content).join('') || '') +
+                estimateTokens(text),
+            },
+          }),
+        );
+        controller.enqueue(encoder.encode('data: [DONE]\n\n'));
+      } finally {
+        try {
+          controller.close();
+        } catch {
+          /* 已关闭 */
+        }
+      }
+    },
+  });
+
+  return new Response(stream, {
+    status: 200,
+    headers: { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache' },
+  });
 }

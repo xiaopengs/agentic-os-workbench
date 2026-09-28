@@ -14,10 +14,13 @@ import { chromium } from 'playwright';
 /**
  * 参数：
  *   argv[2] = 前端地址（默认 http://127.0.0.1:8088）
- *   argv[3] = API 基址（默认同前端；前后端分离部署时传后端地址，如 http://127.0.0.1:8787）
+ *   argv[3] = 后端地址（默认同前端；分离部署时传 http://127.0.0.1:8787）
+ *
+ * 说明：下面的用例路径已自带 /api 前缀，因此这里统一剥掉传入地址尾部的
+ *       /api，避免写成 /api/api/xxx —— 两种写法都要能跑。
  */
 const BASE = process.argv[2] || 'http://127.0.0.1:8088';
-const API_ROOT = process.argv[3] || BASE;
+const API_ROOT = String(process.argv[3] || BASE).replace(/\/api\/?$/, '').replace(/\/+$/, '');
 const results = [];
 let failed = 0;
 
