@@ -14,9 +14,9 @@ Desktop.ini
 *.log
 npm-debug.log*
 
-# Node (if tooling added later)
+# Node
 node_modules/
-package-lock.json
+# 注意：package-lock.json 必须提交（保证商业化项目构建可复现）
 
 # Python
 __pycache__/

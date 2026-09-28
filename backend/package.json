@@ -1,0 +1,23 @@
+{
+  "name": "agentic-os-backend",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Agentic OS 自动化开发工作台 · 后端（EdgeOne Makers Cloud Functions / Node.js）",
+  "type": "module",
+  "main": "functions/router.ts",
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "dependencies": {
+    "@edgeone/pages-blob": "^0.0.14",
+    "bcryptjs": "^3.0.2",
+    "jose": "^5.9.6"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.0",
+    "typescript": "^5.6.3"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
