@@ -1,0 +1,178 @@
+/**
+ * 端到端测试 · Agentic OS 工作台
+ *
+ * 覆盖全链路：注册 → 自动登录 → 会话保持 → 创建工作流 → 持久化校验
+ *            → 配额统计 → Trace 写入 → 登出 → 越权访问拦截
+ *
+ * 用法：
+ *   1) 先启动服务：cd dist && edgeone makers dev --name <项目> --skip-env-sync
+ *   2) 运行测试：node tests/e2e.mjs [baseURL]
+ *      默认 baseURL = http://127.0.0.1:8088
+ */
+import { chromium } from 'playwright';
+
+const BASE = process.argv[2] || 'http://127.0.0.1:8088';
+const results = [];
+let failed = 0;
+
+function check(name, ok, detail = '') {
+  results.push({ name, ok, detail });
+  if (!ok) failed++;
+  console.log(`${ok ? '✅' : '❌'} ${name}${detail ? ' — ' + detail : ''}`);
+}
+
+async function api(ctx, path, options = {}) {
+  const r = await ctx.request.fetch(`${BASE}${path}`, options);
+  let body = null;
+  try {
+    body = await r.json();
+  } catch {
+    body = null;
+  }
+  return { status: r.status(), body };
+}
+
+const browser = await chromium.launch({
+  executablePath: '/opt/google/chrome/chrome',
+  chromiumSandbox: false, // root 环境必需
+});
+const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+const page = await ctx.newPage();
+
+const pageErrors = [];
+page.on('pageerror', (e) => pageErrors.push(String(e)));
+page.on('console', (m) => {
+  if (m.type() === 'error') pageErrors.push('console: ' + m.text());
+});
+
+const email = `e2e_${Date.now()}@test.local`;
+const password = 'Test123456';
+
+try {
+  /* ── 1. 未登录访问受保护页面应被拦截 ─────────────────────── */
+  await page.goto(`${BASE}/`, { waitUntil: 'domcontentloaded' });
+  await page.waitForTimeout(1200);
+  check('未登录访问首页重定向到 /login', page.url().includes('/login'), page.url());
+
+  /* ── 2. 未登录调用业务 API 应 401 ────────────────────────── */
+  const anon = await api(ctx, '/api/workflows', { method: 'GET' });
+  check('未登录调用 /api/workflows 返回 401', anon.status === 401, `实际 ${anon.status}`);
+
+  /* ── 3. 注册 ────────────────────────────────────────────── */
+  const reg = await api(ctx, '/api/auth/register', {
+    method: 'POST',
+    data: { email, password },
+  });
+  check('注册成功返回 200/201', [200, 201].includes(reg.status), `实际 ${reg.status}`);
+  check('注册返回 ok 信封与 user', reg.body?.ok === true && !!reg.body?.data?.user);
+  const token = reg.body?.data?.token;
+  check('注册返回 token', !!token);
+
+  /* ── 4. 弱密码应被拒绝 ──────────────────────────────────── */
+  const weak = await api(ctx, '/api/auth/register', {
+    method: 'POST',
+    data: { email: `weak_${Date.now()}@test.local`, password: '123' },
+  });
+  check('弱密码注册被拒绝(400)', weak.status === 400, `实际 ${weak.status}`);
+  check('弱密码错误码为 VALIDATION_ERROR', weak.body?.error?.code === 'VALIDATION_ERROR', weak.body?.error?.code);
+
+  /* ── 5. 重复注册应冲突 ──────────────────────────────────── */
+  const dup = await api(ctx, '/api/auth/register', {
+    method: 'POST',
+    data: { email, password },
+  });
+  check('重复注册返回 409', dup.status === 409, `实际 ${dup.status}`);
+
+  /* ── 6. 登录后会话可用（走浏览器 Cookie） ────────────────── */
+  await page.goto(`${BASE}/login`, { waitUntil: 'domcontentloaded' });
+  await page.fill('input[type="email"]', email);
+  await page.fill('input[type="password"]', password);
+  await page.click('button[type="submit"]');
+  await page.waitForTimeout(2500);
+  check('登录后进入工作台（非 /login）', !page.url().includes('/login'), page.url());
+
+  /* ── 7. 创建工作流（真实持久化） ────────────────────────── */
+  const wfName = `E2E 工作流 ${Date.now()}`;
+  const created = await api(ctx, '/api/workflows', {
+    method: 'POST',
+    data: {
+      name: wfName,
+      category: '回归测试',
+      description: '端到端测试创建',
+      devices: 4,
+      steps: 12,
+      coverage: 88,
+      duration: 30,
+      status: 'queued',
+      env: 'staging',
+    },
+  });
+  check('创建工作流成功', created.body?.ok === true, JSON.stringify(created.body?.error || ''));
+  const wfId = created.body?.data?.id;
+  check('返回工作流 id', !!wfId);
+
+  /* ── 8. 列表可查到新建工作流（持久化校验） ────────────────── */
+  const list = await api(ctx, '/api/workflows', { method: 'GET' });
+  const hit = list.body?.data?.find?.((w) => w.id === wfId);
+  check('列表中能查到新建工作流（已持久化）', !!hit);
+
+  /* ── 9. 更新工作流 ──────────────────────────────────────── */
+  const patched = await api(ctx, `/api/workflows/${wfId}`, {
+    method: 'PATCH',
+    data: { status: 'running', coverage: 92 },
+  });
+  check('更新工作流成功', patched.body?.ok === true);
+  check('更新后字段生效', patched.body?.data?.status === 'running', patched.body?.data?.status);
+
+  /* ── 10. Trace 写入 ─────────────────────────────────────── */
+  const trace = await api(ctx, '/api/traces', {
+    method: 'POST',
+    data: { kind: 'Agent', name: 'e2e.plan', cost: 120, status: 'Success', time: '00:00:03' },
+  });
+  check('写入 Trace 成功', trace.body?.ok === true);
+
+  /* ── 11. 用量统计 ───────────────────────────────────────── */
+  const usage = await api(ctx, '/api/usage', { method: 'GET' });
+  check(
+    '用量接口返回 runs/limit',
+    typeof usage.body?.data?.runs === 'number' && typeof usage.body?.data?.limit === 'number',
+    JSON.stringify(usage.body?.data),
+  );
+
+  /* ── 12. 审计日志 ───────────────────────────────────────── */
+  const audit = await api(ctx, '/api/audit', { method: 'GET' });
+  check('审计日志有记录', Array.isArray(audit.body?.data) && audit.body.data.length > 0);
+
+  /* ── 13. 删除工作流 ─────────────────────────────────────── */
+  const del = await api(ctx, `/api/workflows/${wfId}`, { method: 'DELETE' });
+  check('删除工作流成功', del.body?.ok === true);
+  const after = await api(ctx, '/api/workflows', { method: 'GET' });
+  check(
+    '删除后列表中不再出现',
+    !after.body?.data?.find?.((w) => w.id === wfId),
+  );
+
+  /* ── 14. 无效应 token 应被拒 ─────────────────────────────── */
+  const bad = await api(ctx, '/api/workflows', {
+    method: 'GET',
+    headers: { Authorization: 'Bearer invalid.token.here' },
+  });
+  check('无效 token 返回 401', bad.status === 401, `实际 ${bad.status}`);
+
+  /* ── 15. 登出后会话失效 ─────────────────────────────────── */
+  await api(ctx, '/api/auth/logout', { method: 'POST' });
+  const afterLogout = await api(ctx, '/api/workflows', { method: 'GET' });
+  check('登出后业务接口返回 401', afterLogout.status === 401, `实际 ${afterLogout.status}`);
+
+  /* ── 16. 运行时零 JS 错误 ───────────────────────────────── */
+  check('页面运行无 JS 错误', pageErrors.length === 0, pageErrors.slice(0, 3).join(' | '));
+} catch (err) {
+  check('测试执行未抛异常', false, String(err).slice(0, 200));
+} finally {
+  await browser.close();
+}
+
+console.log('\n' + '─'.repeat(56));
+console.log(`总计 ${results.length} 项，通过 ${results.length - failed} 项，失败 ${failed} 项`);
+console.log('─'.repeat(56));
+process.exit(failed === 0 ? 0 : 1);
