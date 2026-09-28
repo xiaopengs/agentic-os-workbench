@@ -45,21 +45,22 @@
 
 ## 快速开始
 
+### A. 本地最小化部署（推荐先跑起来，无需任何云平台）
+
 ```bash
-# 1) 安装 CLI（≥1.6.7）
+node scripts/start-local.mjs
+```
+
+一条命令启动：后端 API `http://127.0.0.1:8787/api` + 前端 `http://127.0.0.1:3000`。
+数据落在 `./.data/store.json`，**无需登录、无需联网、无需 EdgeOne**。详见 [docs/07-本地部署与去平台化.md](docs/07-本地部署与去平台化.md)。
+
+### B. 部署到 EdgeOne Makers
+
+```bash
 npm install -g edgeone@latest --registry=https://registry.npmmirror.com
-
-# 2) 登录
 edgeone login --site china --local
-
-# 3) 构建部署单元
-node scripts/build-deploy.mjs
+node scripts/build-deploy.mjs          # 生成自包含部署单元 dist/
 cd dist && npm install
-
-# 4) 本地预览（http://127.0.0.1:8088，勿用 localhost）
-edgeone makers dev --name <项目名> --skip-env-sync
-
-# 5) 部署上线
 edgeone makers deploy -n <项目名> --json
 ```
 
@@ -67,6 +68,10 @@ edgeone makers deploy -n <项目名> --json
 `AI_GATEWAY_API_KEY` / `AI_GATEWAY_BASE_URL` 由平台自动注入。
 
 完整说明见 [docs/06-部署指南.md](docs/06-部署指南.md)。
+
+> 两种形态共用同一套业务代码：平台形态走 `cloud-functions` 的 `onRequest(context)`，
+> 本地形态走 `backend/adapter/node.ts`（把 Node `(req,res)` 翻译成同样的 context）。
+> 前端只需切换 `NEXT_PUBLIC_API_BASE`。
 
 ## API 契约
 

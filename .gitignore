@@ -19,6 +19,9 @@ node_modules/
 
 # 部署单元（构建产物，由 scripts/build-deploy.mjs 生成）
 dist/
+
+# 本地部署的数据文件（LOCAL_STORE=file 时生成）
+.data/
 # 注意：package-lock.json 必须提交（保证商业化项目构建可复现）
 
 # Python
