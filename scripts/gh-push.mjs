@@ -33,6 +33,40 @@ const sh = (...a) => execFileSync('git', ['-c', 'core.quotepath=false', ...a], {
   encoding: 'utf8',
 }).trim();
 
+// 读取 HEAD 中某文件的原始字节（不指定 encoding，得到 Buffer）。
+// ⚠️ 绝不能用 utf8 读：PNG 等二进制含非法 UTF-8 序列（如 PNG 魔数 0x89），
+//    会被替换成 U+FFFD（efbfbd），远端文件直接损坏 —— README 截图全裂的根因。
+const gitShowBuffer = (file) =>
+  execFileSync('git', ['-c', 'core.quotepath=false', 'show', `${head}:${file}`], {
+    maxBuffer: 1 << 26, // 64MB，足够大截图
+  });
+
+// 统一以 base64 创建 blob：文本与二进制同一条路径，杜绝编码损坏。
+// （Trees API 的 content 字段只支持 UTF-8 文本，二进制必须先建 blob 拿 sha。）
+const BLOB_CONCURRENCY = 8;
+async function createBlob(file) {
+  const buf = gitShowBuffer(file);
+  const blob = await api('POST', `/repos/${OWNER}/${REPO}/git/blobs`, {
+    content: buf.toString('base64'),
+    encoding: 'base64',
+  });
+  return { path: file, mode: '100644', type: 'blob', sha: blob.sha };
+}
+
+// 小并发池：既提速又不触发 GitHub API 限流
+async function createBlobsAll(files) {
+  const items = new Array(files.length);
+  let next = 0;
+  async function worker() {
+    while (next < files.length) {
+      const i = next++;
+      items[i] = await createBlob(files[i]);
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(BLOB_CONCURRENCY, files.length) }, worker));
+  return items;
+}
+
 async function api(method, path, payload) {
   const res = await fetch(`https://api.github.com${path}`, {
     method,
@@ -69,22 +103,14 @@ if (!FORCE_FULL && remote === sh('rev-parse', 'HEAD~1')) {
   parent = remote;
   baseTree = sh('rev-parse', 'HEAD~1^{tree}');
   const files = sh('diff', '--name-only', remote, head).split('\n').filter(Boolean);
-  console.log(`模式     : 增量（${files.length} 个文件）`);
-  treeItems = [];
-  for (const f of files) {
-    const content = sh('show', `${head}:${f}`);
-    const blob = await api('POST', `/repos/${OWNER}/${REPO}/git/blobs`, {
-      content,
-      encoding: 'utf-8',
-    });
-    treeItems.push({ path: f, mode: '100644', type: 'blob', sha: blob.sha });
-  }
+  console.log(`模式     : 增量（${files.length} 个文件，base64 blob）`);
+  treeItems = await createBlobsAll(files);
 } else {
   /* 全量：本地完整树，父 = 远端 HEAD */
   parent = remote;
   const files = sh('ls-tree', '-r', '--name-only', head).split('\n').filter(Boolean);
-  console.log(`模式     : 全量（${files.length} 个文件，以远端为父）`);
-  treeItems = files.map((f) => ({ path: f, mode: '100644', type: 'blob', content: sh('show', `${head}:${f}`) }));
+  console.log(`模式     : 全量（${files.length} 个文件，base64 blob，以远端为父）`);
+  treeItems = await createBlobsAll(files);
 }
 
 const tree = await api('POST', `/repos/${OWNER}/${REPO}/git/trees`, {

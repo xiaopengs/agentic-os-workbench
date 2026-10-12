@@ -110,13 +110,17 @@ Node 与 Cloud Functions 上的前提。
 
 ## 快速开始
 
-### A. 本地最小化部署（推荐：一条命令，无需任何云平台）
+### A. 本地一键启动（推荐 · 零门槛）
+
+前置条件只有一个：**安装 [Node.js ≥ 20.9](https://nodejs.org/zh-cn)（LTS）**。不需要数据库、不需要云账号、不需要联网。
 
 ```bash
+git clone https://github.com/xiaopengs/agentic-os-workbench.git
+cd agentic-os-workbench
 node scripts/start-local.mjs
 ```
 
-启动后：
+脚本会**自动完成一切**：检测 Node 版本 → 首次自动安装依赖（约 1-2 分钟，仅一次）→ 启动服务 → 自动打开浏览器。
 
 | 服务 | 地址 |
 |---|---|
@@ -126,11 +130,10 @@ node scripts/start-local.mjs
 - 数据落在 `./.data/store.json`（纯文本，可直接查看 / 编辑，删除即重置）
 - **无需登录、无需联网、无需 EdgeOne**；AI Copilot 默认走本地模拟流
 - 停止：`Ctrl+C`（两个子进程一并退出）
-- 端口可用 `API_PORT` / `WEB_PORT` 覆盖
+- 端口可用 `API_PORT` / `WEB_PORT` 覆盖；`NO_OPEN=1` 关闭自动打开浏览器
+- 首次打开前端需编译约 20-40 秒，属正常现象
 
-仅需 4 个运行期依赖：`bcryptjs`、`jose`、`tsx` + 前端 next/react/tailwind/swr。
-
-> 首次运行需先 `npm install`（根目录）与 `cd frontend && npm install`。
+> 已装好依赖时脚本秒级启动，跳过安装步骤。
 
 ### B. 单端口自包含部署（生产形态，推荐用于托管 / 容器）
 

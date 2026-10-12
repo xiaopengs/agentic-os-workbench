@@ -65,7 +65,8 @@ const password = 'Test123456';
 try {
   /* ── 1. 未登录访问受保护页面应被拦截 ─────────────────────── */
   await page.goto(`${BASE}/`, { waitUntil: 'domcontentloaded' });
-  await page.waitForTimeout(1200);
+  // 客户端守卫跳转依赖 JS 水合：公网/慢机环境下固定 sleep 必然不稳，改为轮询等待（最长 15s）
+  await page.waitForURL((u) => u.href.includes('/login'), { timeout: 15000 }).catch(() => {});
   check('未登录访问首页重定向到 /login', page.url().includes('/login'), page.url());
 
   /* ── 2. 未登录调用业务 API 应 401 ────────────────────────── */
@@ -109,7 +110,9 @@ try {
     await loginPage.fill('input[type="email"]', email);
     await loginPage.fill('input[type="password"]', password);
     await loginPage.click('button[type="submit"]');
-    await loginPage.waitForTimeout(2500);
+    // 登录成功 → 前端跳工作台。公网高延迟下固定 sleep 不稳（曾致线上用例假失败），
+    // 改为轮询等待跳转完成（最长 15s）。
+    await loginPage.waitForURL((u) => !u.href.includes('/login'), { timeout: 15000 }).catch(() => {});
     check('登录后进入工作台（非 /login）', !loginPage.url().includes('/login'), loginPage.url());
 
     // 把登录态同步回主 ctx，供后续浏览器侧用例复用。

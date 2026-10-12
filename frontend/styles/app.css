@@ -5,13 +5,16 @@
 
 /* ===== 顶部导航 ===== */
 body:has(.auth-page){background:var(--bg)}
-.topnav{position:sticky;top:0;z-index:60;background:#fff;border-bottom:1px solid var(--border);height:60px;display:flex;align-items:center;gap:18px;padding:0 20px}
-.brand{display:flex;align-items:center;gap:9px;font-size:18px;font-weight:800;letter-spacing:-.2px;white-space:nowrap}
+.topnav{position:sticky;top:0;z-index:60;background:#fff;border-bottom:1px solid var(--border);height:60px;display:flex;align-items:center;gap:20px;padding:0 22px}
+.brand{display:flex;align-items:center;gap:10px;font-size:17px;font-weight:800;letter-spacing:-.2px;white-space:nowrap;color:var(--t1)}
+.brand:hover{color:var(--t1)}
 .brand .logo{width:28px;height:28px;flex:none}
-.top-tabs{display:flex;align-items:center;gap:4px}
-.top-tabs button{padding:8px 15px;border-radius:var(--r-el);color:var(--t2);font-size:13.5px;font-weight:500;min-height:36px}
-.top-tabs button:hover{color:var(--t1)}
-.top-tabs button.active{background:#1a1f24;color:#fff;font-weight:600}
+.top-tabs{display:flex;align-items:center;gap:6px}
+/* 选择器同时覆盖 a（Link 渲染结果）与 button，避免只匹配 button 导致样式整体失效 */
+.top-tabs a,.top-tabs button{display:inline-flex;align-items:center;padding:8px 16px;border-radius:var(--r-el);color:var(--t2);font-size:14px;font-weight:500;line-height:1.4;min-height:38px;white-space:nowrap;transition:background .16s,color .16s}
+.top-tabs a:hover,.top-tabs button:hover{background:var(--bg);color:var(--t1)}
+.top-tabs a.active,.top-tabs button.active{background:#1a1f24;color:#fff;font-weight:600}
+.top-tabs a.active:hover,.top-tabs button.active:hover{background:#1a1f24;color:#fff}
 .top-right{margin-left:auto;display:flex;align-items:center;gap:12px}
 .searchbox{display:flex;align-items:center;gap:8px;background:var(--bg);border-radius:var(--r-pill);padding:0 14px;height:38px;width:250px;color:var(--t3)}
 .searchbox input{border:0;background:none;width:100%;font-size:16px}
@@ -36,11 +39,12 @@ body:has(.auth-page){background:var(--bg)}
 
 /* ===== 三栏布局 ===== */
 .app{display:grid;grid-template-columns:206px minmax(0,1fr) 326px;gap:18px;padding:16px 22px 28px;max-width:1760px;margin:0 auto;align-items:start}
-.sidenav{background:#fff;border-radius:var(--r-card);box-shadow:var(--shadow);padding:10px;display:flex;flex-direction:column;gap:2px;position:sticky;top:76px;max-height:calc(100vh - 96px);overflow:auto}
-.sidenav button{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:var(--r-el);color:var(--t2);font-size:13px;font-weight:500;text-align:left;min-height:44px;width:100%}
-.sidenav button svg.ic{font-size:17px}
-.sidenav button:hover{background:var(--bg);color:var(--t1)}
-.sidenav button.active{background:var(--green-bg);color:var(--green-deep);font-weight:700}
+.sidenav{background:#fff;border-radius:var(--r-card);box-shadow:var(--shadow);padding:12px;display:flex;flex-direction:column;gap:4px;position:sticky;top:76px;max-height:calc(100vh - 96px);overflow:auto}
+/* 同上：Link 渲染为 <a>，选择器必须覆盖 a，否则间距/悬停/激活态全部失效 */
+.sidenav a,.sidenav button{display:flex;align-items:center;gap:11px;padding:11px 13px;border-radius:var(--r-el);color:var(--t2);font-size:14px;font-weight:500;line-height:1.45;text-align:left;min-height:44px;width:100%;white-space:nowrap;transition:background .16s,color .16s}
+.sidenav a svg.ic,.sidenav button svg.ic{font-size:18px;flex:none}
+.sidenav a:hover,.sidenav button:hover{background:var(--bg);color:var(--t1)}
+.sidenav a.active,.sidenav button.active{background:var(--green-bg);color:var(--green-deep);font-weight:700}
 .side-brand{margin-top:auto;background:linear-gradient(150deg,#eef9f3,#e2f3ec);border-radius:14px;padding:16px 14px;text-align:center;position:relative;overflow:hidden}
 .side-brand .art{width:74px;height:74px;margin:2px auto 6px;display:block}
 .side-brand b{display:block;font-size:14px}
