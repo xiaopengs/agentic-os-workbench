@@ -107,7 +107,7 @@ export function TopNav({ onToggleDrawer }: { onToggleDrawer: () => void }) {
             onKeyDown={(e) => {
               if (e.key === 'Enter') submitSearch();
             }}
-            placeholder="搜索 Agent / Skill / Contract / Trace"
+            placeholder="搜索工作流 / 技能 / Trace"
             aria-label="全局搜索"
           />
         </div>

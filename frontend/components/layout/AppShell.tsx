@@ -5,7 +5,6 @@ import { useEffect, useState, type ReactNode } from 'react';
 import { Icon } from '@/components/icons/Icon';
 import { SideNav } from './SideNav';
 import { TopNav } from './TopNav';
-import { Aside } from '@/components/aside/Aside';
 import { useRequireAuth } from '@/lib/auth';
 
 /**
@@ -30,8 +29,6 @@ export function AppShell({ children }: { children: ReactNode }) {
     );
   }
 
-  const isOverview = pathname === '/';
-
   return (
     <>
       <TopNav onToggleDrawer={() => setDrawer(true)} />
@@ -45,7 +42,6 @@ export function AppShell({ children }: { children: ReactNode }) {
         <main className="main">
           <div className="page active">{children}</div>
         </main>
-        {isOverview ? <Aside /> : null}
       </div>
     </>
   );

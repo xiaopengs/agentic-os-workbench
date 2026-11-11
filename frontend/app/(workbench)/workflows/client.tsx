@@ -9,10 +9,10 @@ import { StatusPill } from '@/components/ui/WorkflowBits';
 import { api } from '@/lib/api-client';
 import { useMutate, useWorkbench } from '@/lib/hooks';
 import { relTime } from '@/lib/format';
-import { NAV_ITEMS } from '@/lib/nav';
+import { navByKey } from '@/lib/nav';
 import type { Workflow } from '@/lib/types';
 
-const META = NAV_ITEMS[1];
+const META = navByKey('workflows');
 
 export default function WorkflowsClient() {
   const sp = useSearchParams();
@@ -94,19 +94,19 @@ export default function WorkflowsClient() {
               <tbody>
                 {rows.map((wf) => (
                   <tr key={wf.id}>
-                    <td>
+                    <td className="tbl-first" data-label="">
                       <div className="tbl-name">{wf.name}</div>
                       <div className="tbl-sub">{wf.category}</div>
                     </td>
-                    <td>
+                    <td data-label="状态">
                       <StatusPill status={wf.status} />
                     </td>
-                    <td className="tbl-num">{wf.devices}</td>
-                    <td className="tbl-num">{wf.steps}</td>
-                    <td className="tbl-num">{wf.coverage}%</td>
-                    <td className="tbl-num">{wf.duration} min</td>
-                    <td className="tbl-sub">{relTime(wf.updatedAt ?? wf.createdAt)}</td>
-                    <td>
+                    <td className="tbl-num" data-label="设备">{wf.devices}</td>
+                    <td className="tbl-num" data-label="步骤">{wf.steps}</td>
+                    <td className="tbl-num" data-label="覆盖率">{wf.coverage}%</td>
+                    <td className="tbl-num" data-label="时长">{wf.duration} min</td>
+                    <td className="tbl-sub" data-label="更新">{relTime(wf.updatedAt ?? wf.createdAt)}</td>
+                    <td className="tbl-full" data-label="">
                       <div className="tbl-actions">
                         <button
                           className="icon-btn"

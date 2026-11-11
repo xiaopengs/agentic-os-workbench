@@ -42,7 +42,7 @@ export default function LoginPage() {
           Agentic OS
         </div>
         <div className="auth-title">登录工作台</div>
-        <div className="auth-sub">继续管理 Contract / Skill / Agent 的全链路开发与验证</div>
+        <div className="auth-sub">继续管理工作流与技能</div>
 
         <form className="auth-form" onSubmit={submit}>
           <label htmlFor="email">邮箱</label>

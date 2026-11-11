@@ -48,7 +48,7 @@ export default function RegisterPage() {
         </div>
         <div className="auth-title">创建账号</div>
         <div className="auth-sub">
-          免费版 100 runs / 月，注册即可使用 Contract Registry 与仿真测试
+          免费版 100 runs / 月，注册即可使用工作流与技能模块
         </div>
 
         <form className="auth-form" onSubmit={submit}>

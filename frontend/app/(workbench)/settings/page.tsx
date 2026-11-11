@@ -7,9 +7,9 @@ import { LoadingRows, PageHeader } from '@/components/ui/PageHeader';
 import { useAuth } from '@/lib/auth';
 import { useWorkbench } from '@/lib/hooks';
 import { fmtMoney, relTime } from '@/lib/format';
-import { NAV_ITEMS } from '@/lib/nav';
+import { navByKey } from '@/lib/nav';
 
-const META = NAV_ITEMS[5];
+const META = navByKey('settings');
 
 export default function SettingsPage() {
   const { user, logout } = useAuth();
@@ -120,10 +120,10 @@ export default function SettingsPage() {
               <tbody>
                 {data.audit.map((a) => (
                   <tr key={a.id}>
-                    <td className="tbl-name">{a.action}</td>
-                    <td className="tbl-sub">{a.target ?? '—'}</td>
-                    <td className="tbl-sub">{a.actor ?? '—'}</td>
-                    <td className="tbl-sub">{relTime(a.at)}</td>
+                    <td className="tbl-first tbl-name" data-label="">{a.action}</td>
+                    <td className="tbl-sub" data-label="对象">{a.target ?? '—'}</td>
+                    <td className="tbl-sub" data-label="操作者">{a.actor ?? '—'}</td>
+                    <td className="tbl-sub" data-label="时间">{relTime(a.at)}</td>
                   </tr>
                 ))}
               </tbody>

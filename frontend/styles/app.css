@@ -464,3 +464,89 @@ table.tbl tbody tr:last-child td{border-bottom:0}
 .copilot-error-title{display:flex;align-items:center;gap:6px;font-size:12.5px}
 .copilot-error-body{margin-top:6px;color:#7f2a24;font-size:12.5px;line-height:1.65;white-space:pre-wrap}
 .copilot-retry{margin-top:8px;font-size:12px;font-weight:600;color:#b42318;text-decoration:underline}
+
+/* ==========================================================================
+   移动端适配重构（v2 · 移动优先）
+   不改任何原型规则，仅在末尾追加收敛层：
+     ① 全局杜绝横向溢出 + iPhone 底部安全区
+     ② svg.ic 尺寸兜底（防止图标回落成巨大黑色块）
+     ③ 网格窄屏单列、卡片可收缩
+     ④ 顶栏只保留品牌 / 菜单 / 用户，点击区 ≥44px
+     ⑤ Live Trace / Recent Workflows / 表格 / 模态框窄屏重排
+   ========================================================================== */
+html,body{max-width:100%;overflow-x:clip}
+body{padding-bottom:env(safe-area-inset-bottom)}
+button,[role="button"],a{touch-action:manipulation;-webkit-tap-highlight-color:transparent}
+:focus-visible{outline:2px solid var(--green-deep);outline-offset:2px}
+svg.ic{width:1em;height:1em;max-width:100%;max-height:100%;flex:none}
+.card,.kpi-card,.wf-card,.trace-card,.workflows-card,.auth-box,
+.sidenav,.main,.page,.row-2col,.tbl-wrap,.modal-box{min-width:0;max-width:100%}
+
+@media (max-width:900px){
+  .topnav{gap:8px;padding:0 12px;height:56px}
+  .topnav .env-wrap,.topnav .searchbox,.topnav .bell-wrap{display:none}
+  .hamburger{display:flex;width:44px;height:44px}
+  .brand{font-size:15px}
+  .brand .logo{width:24px;height:24px}
+  .top-right{gap:4px}
+  .user-btn{min-height:44px}
+  .app{padding:10px 12px calc(28px + env(safe-area-inset-bottom))}
+  .sidenav{width:min(82vw,280px)}
+  .page-head h1{font-size:22px;text-wrap:balance}
+  .kpi-grid{grid-template-columns:1fr 1fr;gap:10px}
+  .wf-grid{grid-template-columns:1fr}
+  .row-2col{grid-template-columns:1fr;gap:14px}
+  .tbl-wrap{max-width:100%}
+}
+@media (max-width:520px){
+  .kpi-grid{grid-template-columns:1fr}
+  .kpi-card{min-height:88px;padding:14px}
+  .kpi-num{font-size:24px}
+  .kpi-ic{width:42px;height:42px;font-size:20px}
+  /* Live Trace：耗时 / 状态换行，不再被右侧裁切 */
+  .trace-row{flex-wrap:wrap;gap:6px 10px;padding:10px 8px}
+  .tr-ico{width:40px;height:40px;flex:none}
+  .tr-mid{flex:1 1 55%;min-width:0}
+  .tr-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .tr-cost{width:auto;flex:none}
+  .tr-time{order:3;margin-left:50px}
+  .tr-bar,.tr-badge{display:none}
+  .head-right .trace-clock{display:none}
+  /* Recent Workflows：操作区整行换行，杜绝「全部工作流 →」竖排 */
+  .wf-top .head-right{width:100%;margin-left:0;justify-content:space-between}
+  .link-more,.run-btn{white-space:nowrap}
+  .wf-grid{gap:12px}
+  /* 列表页表格 → 窄屏卡片：不再横向裁切列（工作流 / 技能 / 审计通用） */
+  .tbl-wrap{overflow:visible;margin:0;padding:0}
+  table.tbl{min-width:0;width:100%;display:block}
+  table.tbl thead{display:none}
+  table.tbl tbody{display:block}
+  table.tbl tr{
+    display:grid;grid-template-columns:1fr 1fr;gap:4px 10px;
+    background:#f7faf8;border-radius:12px;padding:12px;margin-bottom:10px;
+  }
+  table.tbl td{
+    display:flex;align-items:center;justify-content:space-between;gap:10px;
+    border:0;padding:5px 0;min-width:0;font-size:12px;
+  }
+  table.tbl td::before{content:attr(data-label);color:var(--t3);font-size:11.5px;flex:none}
+  table.tbl td[data-label=""]::before{display:none}
+  table.tbl td.tbl-first{
+    grid-column:1/-1;display:block;text-align:left;
+    padding-bottom:9px;border-bottom:1px solid var(--border);margin-bottom:4px;
+  }
+  table.tbl td.tbl-first::before{display:none}
+  table.tbl td.tbl-full{grid-column:1/-1}
+  .tbl-actions{justify-content:flex-end}
+  .icon-btn{min-width:44px;min-height:44px}
+  /* 弹窗与表单 */
+  .modal-box{max-width:100%;max-height:90vh;border-radius:16px}
+  .wf-form .form-row{grid-template-columns:1fr}
+  .primary-btn,.rel-btn,.send-btn,.run-btn{min-height:44px}
+  .auth-box{padding:24px 18px 20px;border-radius:16px}
+  .auth-form input,.chat-input input{font-size:16px}
+  #toast{bottom:calc(20px + env(safe-area-inset-bottom));max-width:92vw}
+}
+@media (prefers-reduced-motion:reduce){
+  *,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}
+}

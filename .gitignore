@@ -35,6 +35,8 @@ __pycache__/
 # ⚠️ 例外：.env.example 必须入库 —— CLI 依据它决定部署时注入哪些环境变量
 !.env.example
 *token*
+# 例外：设计变量文件名含 token 但并非凭证，必须入库（globals.css 引用，缺失会导致编译失败）
+!frontend/styles/tokens.css
 credential*.json
 
 # EdgeOne Makers 构建产物（运行时自动生成，禁止手改）

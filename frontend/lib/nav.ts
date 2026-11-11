@@ -13,25 +13,31 @@ export interface NavItem {
   badge?: string;
 }
 
-/** 工作台 6 个 Tab（对齐原型导航结构） */
+/**
+ * 当前基线只开放 3 个业务入口 + 设置。
+ * 合同 / 设备 / 仿真 / Copilot 等模块源码仍在仓库内，按「逐个补充」节奏恢复，
+ * 详见 docs/08-架构设计决策面板-补充需求.md 与 README。
+ */
 export const NAV_ITEMS: NavItem[] = [
-  { key: 'overview', href: '/', label: '总览', icon: 'i-grid', crumb: 'Agentic OS / 工作台', title: 'Automation Workbench', badge: '全链路开发与验证' },
+  { key: 'overview', href: '/', label: '总览', icon: 'i-grid', crumb: 'Agentic OS / 工作台', title: 'Automation Workbench', badge: '工作流与技能' },
   { key: 'workflows', href: '/workflows', label: '工作流', icon: 'i-list', crumb: 'Agentic OS / 工作流', title: 'Workflows', badge: '场景编排与执行' },
   { key: 'skills', href: '/skills', label: '技能', icon: 'i-cube', crumb: 'Agentic OS / 技能', title: 'Skills', badge: '原子能力注册表' },
-  { key: 'contracts', href: '/contracts', label: '合同', icon: 'i-doc', crumb: 'Agentic OS / 合同', title: 'Contract Registry', badge: '声明式能力契约' },
-  { key: 'devices', href: '/devices', label: '设备', icon: 'i-device', crumb: 'Agentic OS / 设备', title: 'Device Cluster', badge: '真机与仿真集群' },
   { key: 'settings', href: '/settings', label: '设置', icon: 'i-wrench', crumb: 'Agentic OS / 设置', title: 'Settings', badge: '账号 · 配额 · 审计' },
 ];
 
+/** 按最长前缀匹配，避免增删导航项时索引错位 */
 export function navByPath(pathname: string): NavItem {
-  if (pathname.startsWith('/workflows')) return NAV_ITEMS[1];
-  if (pathname.startsWith('/skills')) return NAV_ITEMS[2];
-  if (pathname.startsWith('/contracts')) return NAV_ITEMS[3];
-  if (pathname.startsWith('/devices')) return NAV_ITEMS[4];
-  if (pathname.startsWith('/settings')) return NAV_ITEMS[5];
-  return NAV_ITEMS[0];
+  const match = [...NAV_ITEMS]
+    .reverse()
+    .find((item) => item.href !== '/' && pathname.startsWith(item.href));
+  return match ?? NAV_ITEMS[0];
 }
 
 export function navKeyByPath(pathname: string): string {
   return navByPath(pathname).key;
+}
+
+/** 按 key 精确查找，避免增删导航项时硬编码索引错位（逐个补充模块时安全） */
+export function navByKey(key: string): NavItem {
+  return NAV_ITEMS.find((item) => item.key === key) ?? NAV_ITEMS[0];
 }

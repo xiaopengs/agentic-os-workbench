@@ -5,10 +5,10 @@ import { Chip } from '@/components/ui/WorkflowBits';
 import { LoadingRows, PageHeader } from '@/components/ui/PageHeader';
 import { useWorkbench } from '@/lib/hooks';
 import { relTime } from '@/lib/format';
-import { NAV_ITEMS } from '@/lib/nav';
+import { navByKey } from '@/lib/nav';
 import type { Skill } from '@/lib/types';
 
-const META = NAV_ITEMS[2];
+const META = navByKey('skills');
 
 const STATUS_TONE: Record<string, 'ok' | 'warn' | 'mute'> = {
   active: 'ok',
@@ -36,16 +36,16 @@ export function SkillsList({ skills, loading }: { skills: Skill[]; loading: bool
         <tbody>
           {skills.map((s) => (
             <tr key={s.id}>
-              <td>
+              <td className="tbl-first" data-label="">
                 <div className="tbl-name">{s.name}</div>
                 <div className="tbl-sub">{s.description ?? '—'}</div>
               </td>
-              <td className="tbl-num">{s.version}</td>
-              <td className="tbl-sub">{s.category ?? '—'}</td>
-              <td>
+              <td className="tbl-num" data-label="版本">{s.version}</td>
+              <td className="tbl-sub" data-label="分类">{s.category ?? '—'}</td>
+              <td data-label="状态">
                 <Chip tone={STATUS_TONE[s.status ?? ''] ?? 'mute'}>{s.status ?? '—'}</Chip>
               </td>
-              <td className="tbl-sub">{relTime(s.updatedAt)}</td>
+              <td className="tbl-sub" data-label="更新">{relTime(s.updatedAt)}</td>
             </tr>
           ))}
         </tbody>

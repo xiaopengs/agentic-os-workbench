@@ -23,7 +23,9 @@ export function LiveTrace({ traces, loading }: { traces: Trace[]; loading: boole
     return () => window.clearInterval(t);
   }, []);
 
+  // 合同模块已下线：链路记录中不再展示 Contract 类型条目
   const rows = [...traces]
+    .filter((t) => t.kind !== 'Contract')
     .sort((a, b) => {
       const ta = a.createdAt ? new Date(a.createdAt).getTime() : 0;
       const tb = b.createdAt ? new Date(b.createdAt).getTime() : 0;
