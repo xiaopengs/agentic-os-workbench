@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { KpiGrid } from '@/components/dashboard/KpiGrid';
 import { LiveTrace } from '@/components/dashboard/LiveTrace';
 import { RecentWorkflows } from '@/components/dashboard/RecentWorkflows';
+import { ApprovalCards } from '@/components/dashboard/ApprovalCards';
 import { WorkflowFormModal } from '@/components/modals/WorkflowFormModal';
 import { Icon, type IconName } from '@/components/icons/Icon';
 import { PageHeader } from '@/components/ui/PageHeader';
@@ -21,6 +22,7 @@ interface AttentionItem {
   icoTone: 'r' | 'g' | 'a';
   chipText: string;
   chipTone: 'ok' | 'warn' | 'err' | 'info' | 'mute';
+  href: string;
 }
 
 /**
@@ -38,19 +40,19 @@ export default function OverviewPage() {
   if (openCards > 0) {
     attention.push({
       key: 'cards', title: `${openCards} 张卡片待拍板`, time: '回答后自动续跑，挂起期间不占轮次',
-      icon: 'i-bell', icoTone: 'r', chipText: '待决策', chipTone: 'err',
+      icon: 'i-bell', icoTone: 'r', chipText: '待决策', chipTone: 'err', href: '#approval',
     });
   }
   if (totals && totals.queuedRuns > 0) {
     attention.push({
       key: 'queued', title: `${totals.queuedRuns} 个轮次排队中`, time: '规则命中后派发，等待执行回执',
-      icon: 'i-play', icoTone: 'g', chipText: '进行中', chipTone: 'info',
+      icon: 'i-play', icoTone: 'g', chipText: '进行中', chipTone: 'info', href: '/workflows',
     });
   }
   if (totals && totals.hopsBlocked > 0) {
     attention.push({
       key: 'hops', title: `${totals.hopsBlocked} 次跳数熔断`, time: '超过 8 层已停止派活，避免无限循环',
-      icon: 'i-warn', icoTone: 'a', chipText: '已拦截', chipTone: 'warn',
+      icon: 'i-warn', icoTone: 'a', chipText: '已拦截', chipTone: 'warn', href: '/workflows',
     });
   }
 
@@ -88,7 +90,7 @@ export default function OverviewPage() {
               <span className={`chip ${a.chipTone}`} style={{ marginLeft: 'auto', flex: 'none' }}>
                 {a.chipText}
               </span>
-              <Link className="chev" href="/workflows" aria-label="前往规则页处理">
+              <Link className="chev" href={a.href} aria-label={a.href === '#approval' ? '前往审批卡片台处理' : '前往规则页处理'}>
                 <Icon name="i-chev-r" />
               </Link>
             </div>
@@ -97,6 +99,8 @@ export default function OverviewPage() {
           <div className="empty-tip">一切就绪 · 点击「接入事件」即可命中规则、派出第一轮并写入事实日志</div>
         )}
       </div>
+
+      <ApprovalCards cards={state?.cards ?? []} loading={loading} />
 
       <KpiGrid state={state} />
 

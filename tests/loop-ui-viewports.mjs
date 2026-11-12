@@ -72,6 +72,27 @@ try {
   check('接入事件命中规则派活', ev.status === 201 && (evBody?.data?.routed?.length ?? 0) > 0,
     `routed=${JSON.stringify(evBody?.data?.routed ?? evBody?.error)}`);
 
+  // 造一张 open 的 ask 卡片：让四视口都能验证「有卡片」的审批台布局
+  const apiPost = async (path, body) => fetch(`${BASE}/api${path}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+    body: JSON.stringify(body),
+  }).then((r) => r.json().catch(() => ({})));
+  const stForRun = await fetch(`${BASE}/api/loop/state`, {
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  }).then((r) => r.json().catch(() => ({})));
+  const queued = (stForRun?.data?.runs ?? []).filter((r) => r.state === 'queued').sort((a, b) => b.seq - a.seq)[0];
+  if (queued) {
+    const rec = await apiPost(`/loop/runs/${queued.id}/result`, {
+      outcome: 'done', summary: 'UI 验证：Agent 请求拍板',
+      ask: [{ title: '是否合并这条修复？', text: '等待你确认下一步。', options: ['合并到 main', '先放着', '关闭'], recommend: 0 }],
+    });
+    check('M3 造出一张待拍板卡片', (rec?.data?.cards?.length ?? 0) === 1,
+      `cards=${JSON.stringify(rec?.data?.cards ?? [])}`);
+  } else {
+    check('M3 造出一张待拍板卡片', false, '未找到 queued run');
+  }
+
   /* ── 四视口逐页验证 ── */
   for (const vp of VIEWPORTS) {
     await page.setViewportSize({ width: vp.w, height: vp.h });
@@ -109,6 +130,31 @@ try {
         `scrollW=${metrics.scrollWidth} innerW=${metrics.innerWidth} 溢出=${metrics.overflow}`);
       check(`${tag} 超大图标=0`, metrics.hugeIcons === 0, `命中 ${metrics.hugeIcons} 个`);
       check(`${tag} 运行时错误=0`, errors.length === 0, errors.slice(0, 2).join(' | '));
+
+      // M3 审批台：总览页各视口都要有卡片 + 选项按钮触控区达标、不溢出
+      if (p.path === '/') {
+        const approval = await page.evaluate(() => {
+          const root = document.getElementById('approval');
+          if (!root) return { exists: false };
+          const btns = [...root.querySelectorAll('button')];
+          const cardBox = root.getBoundingClientRect();
+          const optBtns = btns.filter((b) => /合并|先放|关闭|演示/.test(b.textContent || ''));
+          return {
+            exists: true,
+            hasTitle: (root.textContent || '').includes('审批卡片台'),
+            cardCount: root.querySelectorAll('.wf-card').length,
+            optCount: optBtns.length,
+            minOptHeight: optBtns.length ? Math.min(...optBtns.map((b) => b.getBoundingClientRect().height)) : 0,
+            withinViewport: cardBox.right <= window.innerWidth + 2,
+          };
+        });
+        check(`${tag} 审批台存在且含卡片`, approval.exists && approval.hasTitle && approval.cardCount >= 1,
+          `exists=${approval.exists} cards=${approval.cardCount}`);
+        check(`${tag} 审批台选项按钮 ≥3 且触控区 ≥44px`,
+          approval.optCount >= 3 && approval.minOptHeight >= 44,
+          `opt=${approval.optCount} minH=${approval.minOptHeight}`);
+        check(`${tag} 审批台不溢出视口`, approval.withinViewport === true);
+      }
     }
   }
 
@@ -137,6 +183,34 @@ try {
     `trace-rows=${overview.traceRows}`);
   check('Recent Runs 显示真实轮次（≥1 卡）', overview.hasRecentRuns && overview.wfCards >= 1,
     `wf-cards=${overview.wfCards}`);
+
+  /* ── M3 实操闭环：点选项拍板 → 续跑（1440 视口）── */
+  const beforeAnswer = await page.evaluate(() => ({
+    openBadges: document.querySelectorAll('#approval .wf-status.running').length,
+    hasPendingTip: document.body.innerText.includes('张卡片待拍板'),
+  }));
+  check('M3 拍板前有「待拍板」状态卡片', beforeAnswer.openBadges >= 1,
+    `running-badges=${beforeAnswer.openBadges}`);
+  const optBtn = page.locator('#approval button', { hasText: '合并到 main' }).first();
+  if (await optBtn.count()) {
+    await optBtn.click();
+    await page.waitForTimeout(1200); // 等 answer → revalidateLoop → 各 SWR 重渲染
+  }
+  const afterAnswer = await page.evaluate(() => {
+    const root = document.getElementById('approval');
+    const text = root ? (root.innerText || root.textContent || '') : '';
+    return {
+      decided: text.includes('已回答') || text.includes('已结案'),
+      resumed: text.includes('已续跑'),
+      openBadges: document.querySelectorAll('#approval .wf-status.running').length,
+      factLogHasAnswer: document.body.innerText.includes('卡片回答'),
+    };
+  });
+  check('M3 拍板后卡片转「已回答」', afterAnswer.decided, `decided=${afterAnswer.decided}`);
+  check('M3 拍板后出现续跑轮次标记', afterAnswer.resumed, `resumed=${afterAnswer.resumed}`);
+  check('M3 拍板后「待拍板」状态归零', afterAnswer.openBadges === 0,
+    `running-badges=${afterAnswer.openBadges}`);
+  check('M3 事实日志出现「卡片回答」', afterAnswer.factLogHasAnswer);
 
   await ctx.close();
 } finally {

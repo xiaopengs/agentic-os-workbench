@@ -231,7 +231,8 @@ autoloop 完整能力折算 **远超 4 个模块**，一次性全量搭建必然
 |---|---|
 | M1 | `shared/loop.ts` · `backend/lib/loop/kernel.ts` · `backend/lib/loop/store.ts` · `backend/lib/loop/seed.ts` · `backend/functions/loop.ts` · `backend/functions/router.ts`（注册 21 条 `/loop/*` 路由）· `tests/loop-kernel.test.ts`（68 断言）· `tests/loop-api-smoke.ts`（39 项 REST 全链路）· `package.json`（`test:loop*` 脚本）· 本文档 |
 | M2 | 前端数据层 `frontend/lib/loop-{types,format,api,hooks}.ts`（镜像/映射/端点/SWR，零新 CSS）；改造 `KpiGrid`/`LiveTrace`/`RecentWorkflows`/`WorkflowFormModal` + 4 页面（`page.tsx`/`workflows`/`skills`/`settings`）+ `nav.ts`/`TopNav` 文案；`tests/loop-ui-viewports.mjs`（56 项四视口）、`tests/loop-concurrency-e2e.mjs`（30 项并发）|
-| M3+ | 见各期实施记录（追加于本文末「实施日志」） |
+| M3 | 审批卡片台 `frontend/components/dashboard/ApprovalCards.tsx`（复用 `.card/.wf-card/.chip/.run-btn`，零新增 CSS）+ 总览接线 `page.tsx`（审批台置顶 + 待拍板条目跳 `#approval`）；`tests/loop-approval-e2e.mjs`（37 项全链路 e2e）；`tests/loop-ui-viewports.mjs`（扩至 74 项，含审批台四视口 + 拍板续跑实操）；`package.json`（`test:loop-approval` 脚本）· 本文档 |
+| M4+ | 见各期实施记录（追加于本文末「实施日志」） |
 
 ---
 
@@ -274,3 +275,20 @@ autoloop 完整能力折算 **远超 4 个模块**，一次性全量搭建必然
 | 并发首访播种幂等（真实服务） | `npm run test:loop-concurrency` | 30 / 0 |
 | 四视口 375/768/1440/1920 × 4 页（溢出/超大图标/运行时错误/真实内核数据） | `npm run test:loop-ui` | 56 / 0 |
 | 目视核对 | 总览 + 规则页截图 | KPI 4/7、事实 #11、8 列规则表，视觉与原项目一致，无异常 |
+
+- **2026-11-12 GitHub 提交（M1+M2+PC 宽屏）**：commit `43746ca4`（parent `3c5030d8`，历史连续、非 force），28 文件（14 新增 + 14 修改）。因沙箱 git 传输通道 TLS 不可用，沿用 `sandbox-github-commit` skill 的 Git Data API 路径（blob→tree→commit→PATCH ref），用**显式 28 文件清单**隔离含凭证的 `SECRET.md`，Token 仅以单次环境变量注入、不落盘不回显，提交后清理平台脚本写入 `~/.zshrc` 的明文残留。已提醒用户 revoke。
+- **2026-11-12 M3 完成（审批卡片台 · 挂起零消耗可视化闭环）**：严格「UI 以当前项目风格为准」，**纯前端增量、零后端改动**（内核/种子/REST/既有测试断言全部不动，零回归风险）：
+  - 新增 `ApprovalCards`：展示 open 的 ask 卡片 + 选项按钮（推荐项绿色高亮）+「挂起中 · 0 新轮次 / 0 Token」佐证；点选项走 `answerCard` → 内核产 `card.answered`+`event.accepted`+`run.queued` 接原事项续跑 → 卡片转 decided → `revalidateLoop()` 统一刷新；「演示一次拍板」按钮走真实 API 链路（接入事件→对 queued run 交带 `ask` 的回执→产出 open 卡片）。全部复用既有语义类与 40 个内联图标，**零新增 CSS**。
+  - 总览页把审批台置于「今天要处理」与 KPI 之间，待拍板 chev 从 `/workflows` 改跳 `#approval` 锚点。
+  - 数据流严格单向：交互→写事实→统一失效→SWR 各自重渲染，无渲染函数互调环（对齐 §2.4 架构红线）。
+- **2026-11-12 M3 验收（全绿）**：
+
+| 验证项 | 命令 | 结果 |
+|---|---|---|
+| 前端 TypeScript / 生产构建 | `npx tsc --noEmit` / `npm run build` | 通过 / 11 页静态生成 |
+| 审批卡片台全链路 e2e（挂起零消耗/续跑/溯源/幂等/越界/多租户） | `npm run test:loop-approval` | 37 / 0 |
+| 确定性内核 / REST 冒烟 / 既有接口 / 并发（**零回归**） | `test:loop-kernel` / `test:loop-api` / `test:api` / `test:loop-concurrency` | 68 / 39 / 34 / 30 |
+| 四视口 × 4 页 + 审批台 + 拍板续跑实操 | `npm run test:loop-ui` | 74 / 0（按钮触控区全部 ≥44px） |
+| 目视核对 | 审批台总览截图 | 「今天要处理」1 张待拍板、审批台 3 选项、事实日志「事件→排队→回执→卡片创建」闭环，视觉与原项目一致 |
+
+  > 说明：M3 未改种子，首次打开审批台为空态并引导「演示一次拍板」——这是刻意设计，让 `ask→open（无新 run）→answer→新 run` 由用户**实操触发、真实写事实日志**，而非预置静态假数据；同时保住 M1/M2 已验证的 `facts=11 / seq=11` 等并发断言不被改动。
