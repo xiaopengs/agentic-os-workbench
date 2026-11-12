@@ -320,4 +320,6 @@ autoloop 完整能力折算 **远超 4 个模块**，一次性全量搭建必然
 | 目视核对 | 规则页 / 插件页 / 溯源 Modal 三张截图 | 白底绿系圆角卡片、复用原视觉，无溢出/黑块/错位 |
 
   > **部署状态**：线上 3000 实例与外网链接（`https://a00b3c39736f37990.app.workbuddy.host/?sharecode=Q4ABTA5LR3`）仍为 M1 之前基线版；按分期，重新发布在 **M5** 执行，避免把半成品推到线上。M4 全部验证在本地 3737 预览服务完成。
-  > **提交状态**：M3 已提交（`04158c14`）；M4 代码已在本地全量验证，提交待用户确认凭证后执行。
+  > **提交状态**：M3 已提交（`04158c14`）；M4 已提交（`6c72a157`，20 文件，parent `04158c14`，历史连续、非 force）。
+
+- **2026-11-12 GitHub 提交（M4）**：commit `6c72a157ae9a3d71dfefba0e3405fd7d367a4e1b`（parent `04158c14`），20 文件（17 修改 + 3 新增）。沿用 `sandbox-github-commit` skill 的 Git Data API 路径；提交前以 M3 codeload 快照作基线逐文件比对，剔除三类误报——`package-lock.json`（本地陈旧版，提交会回退远端 `optionalDependencies` 修复）、`frontend/next-env.d.ts`、`frontend/tsconfig.tsbuildinfo`（构建产物）；显式 20 文件清单隔离凭证，Token 仅单次环境变量注入、不落盘不回显。提交后独立校验：ref 指向新 commit、`parents[0]` = 原 HEAD、20 文件状态分布、关键内容（`shared/loop.ts` 版本 `0.4.0`、`getHealthz` 引用常量）、`frontend/styles/tokens.css` 未被 `.gitignore` 误伤、tree 未截断（134 blob）。项目内凭证残留 / `.git` / remote URL / shell 配置扫描均干净。已提醒用户 revoke 该 classic PAT。
