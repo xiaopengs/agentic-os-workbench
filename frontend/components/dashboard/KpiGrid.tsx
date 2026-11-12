@@ -2,8 +2,7 @@
 
 import Link from 'next/link';
 import { Icon, type IconName } from '@/components/icons/Icon';
-import { weeklyTrend } from '@/lib/format';
-import type { Skill, Workflow } from '@/lib/types';
+import type { LoopState } from '@/lib/loop-types';
 
 interface KpiDef {
   key: string;
@@ -11,19 +10,34 @@ interface KpiDef {
   icon: IconName;
   tone: 'g' | 'p' | 'b' | 'c';
   href: string;
-  value: number;
+  value: number | string;
   trendLabel: string;
   flat: boolean;
+  week: string;
 }
 
-/** 精简基线：只保留工作流与技能两张 KPI 卡（合同 / 设备已下线） */
-export function KpiGrid({ workflows, skills }: { workflows: Workflow[]; skills: Skill[] }) {
-  const wt = weeklyTrend(workflows);
-  const st = weeklyTrend(skills);
+/**
+ * 总览 KPI · 视觉与精简基线完全一致（2 张卡 / kpi-grid / kpi-ic 色调 / kpi-trend / kpi-week / kpi-go）。
+ * 只把数值来源从 workflows.length / skills.length 换成 LoopState.totals：
+ *   工作流 → 活跃规则，技能 → 已登记插件。
+ */
+export function KpiGrid({ state }: { state: LoopState | null }) {
+  const t = state?.totals;
+  const pluginCount = t ? t.agents + t.sources + t.channels + t.deliveries : 0;
 
   const items: KpiDef[] = [
-    { key: 'workflows', label: 'Workflows', icon: 'i-list', tone: 'g', href: '/workflows', value: workflows.length, trendLabel: wt.label, flat: wt.flat },
-    { key: 'skills', label: 'Skills', icon: 'i-cube', tone: 'p', href: '/skills', value: skills.length, trendLabel: st.label, flat: st.flat },
+    {
+      key: 'rules', label: '活跃规则', icon: 'i-list', tone: 'g', href: '/workflows',
+      value: t?.activeRules ?? '—',
+      trendLabel: t ? `共 ${t.rules} 条` : '— 持平', flat: true,
+      week: state ? `规则版本 v${state.rulesVersion}` : '较上周',
+    },
+    {
+      key: 'plugins', label: '已登记插件', icon: 'i-cube', tone: 'p', href: '/skills',
+      value: t ? pluginCount : '—',
+      trendLabel: t ? `${t.agents} 个 Agent` : '— 持平', flat: true,
+      week: state ? `事实 #${state.seq}` : '较上周',
+    },
   ];
 
   return (
@@ -39,7 +53,7 @@ export function KpiGrid({ workflows, skills }: { workflows: Workflow[]; skills: 
               <span className="kpi-num">{def.value}</span>
               <span className={`kpi-trend${def.flat ? ' flat' : ''}`}>{def.trendLabel}</span>
             </div>
-            <div className="kpi-week">较上周</div>
+            <div className="kpi-week">{def.week}</div>
           </div>
           <span className="kpi-go">
             <Icon name="i-chev-r" />

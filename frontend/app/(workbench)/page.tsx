@@ -1,23 +1,58 @@
 'use client';
 
 import { useState } from 'react';
+import Link from 'next/link';
 import { KpiGrid } from '@/components/dashboard/KpiGrid';
 import { LiveTrace } from '@/components/dashboard/LiveTrace';
 import { RecentWorkflows } from '@/components/dashboard/RecentWorkflows';
 import { WorkflowFormModal } from '@/components/modals/WorkflowFormModal';
+import { Icon, type IconName } from '@/components/icons/Icon';
 import { PageHeader } from '@/components/ui/PageHeader';
-import { useWorkbench } from '@/lib/hooks';
+import { useLoopWorkbench } from '@/lib/loop-hooks';
 import { navByKey } from '@/lib/nav';
 
 const OVERVIEW = navByKey('overview');
 
+interface AttentionItem {
+  key: string;
+  title: string;
+  time: string;
+  icon: IconName;
+  icoTone: 'r' | 'g' | 'a';
+  chipText: string;
+  chipTone: 'ok' | 'warn' | 'err' | 'info' | 'mute';
+}
+
 /**
- * 精简基线版总览：只保留与「工作流 / 技能」直接相关的三块内容。
- * 已下线：Agent Lifecycle、Simulation Lab、右侧 Copilot 侧栏（源码保留，后续逐个补充）。
+ * 总览 · 组件骨架与精简基线完全一致（PageHeader / KPI 2 卡 / Live Trace 列表 / Recent 3 卡 / 弹窗），
+ * 仅把数据源从旧 workflows/skills/traces 换成 Autoloop 内核（/loop/state + /loop/facts）。
+ * 顶部「今天要处理」复用既有 .attn-* / .chip 样式，零新增 CSS。
  */
 export default function OverviewPage() {
-  const data = useWorkbench();
-  const [wfOpen, setWfOpen] = useState(false);
+  const { state, totals, facts, loading, sync } = useLoopWorkbench();
+  const [open, setOpen] = useState(false);
+
+  const openCards = state?.cards.filter((c) => c.state === 'open').length ?? 0;
+
+  const attention: AttentionItem[] = [];
+  if (openCards > 0) {
+    attention.push({
+      key: 'cards', title: `${openCards} 张卡片待拍板`, time: '回答后自动续跑，挂起期间不占轮次',
+      icon: 'i-bell', icoTone: 'r', chipText: '待决策', chipTone: 'err',
+    });
+  }
+  if (totals && totals.queuedRuns > 0) {
+    attention.push({
+      key: 'queued', title: `${totals.queuedRuns} 个轮次排队中`, time: '规则命中后派发，等待执行回执',
+      icon: 'i-play', icoTone: 'g', chipText: '进行中', chipTone: 'info',
+    });
+  }
+  if (totals && totals.hopsBlocked > 0) {
+    attention.push({
+      key: 'hops', title: `${totals.hopsBlocked} 次跳数熔断`, time: '超过 8 层已停止派活，避免无限循环',
+      icon: 'i-warn', icoTone: 'a', chipText: '已拦截', chipTone: 'warn',
+    });
+  }
 
   return (
     <>
@@ -25,20 +60,55 @@ export default function OverviewPage() {
         crumb={OVERVIEW.crumb}
         title={OVERVIEW.title}
         badge={OVERVIEW.badge}
-        sync={data.sync}
+        sync={sync}
       />
 
-      <KpiGrid workflows={data.workflows} skills={data.skills} />
+      {/* 今天要处理 · 复用既有卡片/列表/chip 样式，视觉零改动 */}
+      <div className="card" style={{ marginBottom: 18 }}>
+        <div className="card-head">
+          <b>今天要处理</b>
+          <span className="sub">挂起零消耗 · 待拍板与排队轮次都不会凭空消失</span>
+          <span className="head-right">
+            <button className="run-btn" onClick={() => setOpen(true)}>
+              <Icon name="i-play" size={13} />
+              接入事件
+            </button>
+          </span>
+        </div>
+        {attention.length ? (
+          attention.map((a) => (
+            <div className="attn-item" key={a.key}>
+              <span className={`attn-ico ${a.icoTone}`}>
+                <Icon name={a.icon} />
+              </span>
+              <span className="attn-txt">
+                <span className="attn-title">{a.title}</span>
+                <span className="attn-time">{a.time}</span>
+              </span>
+              <span className={`chip ${a.chipTone}`} style={{ marginLeft: 'auto', flex: 'none' }}>
+                {a.chipText}
+              </span>
+              <Link className="chev" href="/workflows" aria-label="前往规则页处理">
+                <Icon name="i-chev-r" />
+              </Link>
+            </div>
+          ))
+        ) : (
+          <div className="empty-tip">一切就绪 · 点击「接入事件」即可命中规则、派出第一轮并写入事实日志</div>
+        )}
+      </div>
 
-      <LiveTrace traces={data.traces} loading={data.loading} />
+      <KpiGrid state={state} />
+
+      <LiveTrace facts={facts} loading={loading} pendingCards={openCards} />
 
       <RecentWorkflows
-        workflows={data.workflows}
-        loading={data.loading}
-        onRun={() => setWfOpen(true)}
+        runs={state?.runs ?? []}
+        loading={loading}
+        onRun={() => setOpen(true)}
       />
 
-      <WorkflowFormModal open={wfOpen} onClose={() => setWfOpen(false)} />
+      <WorkflowFormModal open={open} onClose={() => setOpen(false)} />
     </>
   );
 }

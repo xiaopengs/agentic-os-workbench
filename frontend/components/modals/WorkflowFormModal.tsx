@@ -2,123 +2,85 @@
 
 import { useEffect, useState } from 'react';
 import { Modal } from './Modal';
-import { api } from '@/lib/api-client';
-import { useMutate } from '@/lib/hooks';
+import { loopApi, loopToast } from '@/lib/loop-api';
+import { useLoopMutate } from '@/lib/loop-hooks';
 import { emitToast } from '@/lib/toast-bus';
-import type { WorkflowInput, WorkflowStatus } from '@/lib/types';
+import type { LoopEvent, LoopRule, TellMode } from '@/lib/loop-types';
 
-const TEMPLATES: { value: string; label: string; preset: Omit<WorkflowInput, 'status'> }[] = [
-  {
-    value: 'msg',
-    label: '消息智能摘要 Agent',
-    preset: {
-      name: '消息智能摘要 Agent',
-      category: '效率工具 · 信息聚合',
-      description: '聚合未读消息并生成摘要与待办',
-      devices: 2,
-      steps: 7,
-      coverage: 0,
-      duration: 12,
-    },
-  },
-  {
-    value: 'album',
-    label: '相册整理 Agent',
-    preset: {
-      name: '相册整理 Agent',
-      category: '生活服务 · 图像管理',
-      description: '按人物/场景自动归类相册并去重',
-      devices: 3,
-      steps: 9,
-      coverage: 0,
-      duration: 16,
-    },
-  },
-  {
-    value: 'meeting',
-    label: '会议纪要生成 Agent',
-    preset: {
-      name: '会议纪要生成 Agent',
-      category: '办公协同 · 语音转写',
-      description: '转写会议录音并生成纪要与行动项',
-      devices: 4,
-      steps: 10,
-      coverage: 0,
-      duration: 20,
-    },
-  },
+/** 事件模板 · 对应已播种的 4 条规则（source + type 会命中规则派活） */
+const EVENT_TEMPLATES: { value: string; label: string; preset: Omit<LoopEvent, 'id'> }[] = [
+  { value: 'issue', label: 'GitHub Issue（命中「跟进 GitHub Issue」）', preset: { source: 'github', type: 'issues.opened', subject: 'repo#128', summary: '新 Issue 待自动跟进' } },
+  { value: 'alert', label: '线上报错（命中「查线上报错」）', preset: { source: 'shop', type: 'alert.cpu', subject: 'svc.payment', summary: 'CPU 告警待排查' } },
+  { value: 'site', label: '网站巡检（命中「网站巡检」）', preset: { source: 'shop', type: 'site.check', subject: 'homepage', summary: '首页可用性巡检' } },
+  { value: 'custom', label: '自定义事件', preset: { source: 'manual', type: 'note.created' } },
 ];
 
-const STATUS_OPTIONS: { value: WorkflowStatus; label: string }[] = [
-  { value: 'running', label: '运行中' },
-  { value: 'queued', label: '排队中' },
-  { value: 'done', label: '已完成' },
-  { value: 'failed', label: '失败' },
+const TELL_OPTIONS: { value: TellMode; label: string }[] = [
+  { value: 'needed', label: '按需通知' },
+  { value: 'always', label: '总是通知' },
+  { value: 'never', label: '不通知' },
 ];
 
-const FORM_KEY = 'agentic_os_wf_form';
+type Mode = 'event' | 'rule';
 
-export function WorkflowFormModal({ open, onClose }: { open: boolean; onClose: () => void }) {
-  const { revalidateWorkflows, revalidateUsage, revalidateAudit } = useMutate();
-  const [tpl, setTpl] = useState('msg');
-  const [form, setForm] = useState<WorkflowInput>({ ...TEMPLATES[0].preset, status: 'running' });
+function newEventId(): string {
+  return `evt_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
+}
+
+/**
+ * 动作弹窗 · 视觉与原型「运行新工作流」弹窗完全一致（Modal + .wf-form + .form-row + .primary-btn）。
+ * 语义换成 Autoloop 的两个写操作：手动接入事件（派活）/ 新建规则。
+ * 写成功后只调一个 revalidateLoop() 统一失效，由 SWR 各自重渲染（单向链路，无渲染互调）。
+ */
+export function WorkflowFormModal({
+  open, onClose, defaultMode = 'event',
+}: {
+  open: boolean;
+  onClose: () => void;
+  defaultMode?: Mode;
+}) {
+  const { revalidateLoop } = useLoopMutate();
+  const [mode, setMode] = useState<Mode>(defaultMode);
   const [submitting, setSubmitting] = useState(false);
 
-  useEffect(() => {
-    if (!open) return;
-    try {
-      const raw = window.localStorage.getItem(FORM_KEY);
-      if (raw) setForm((prev) => ({ ...prev, ...(JSON.parse(raw) as Partial<WorkflowInput>) }));
-    } catch {
-      /* noop */
-    }
-  }, [open]);
+  // 事件模式
+  const [tpl, setTpl] = useState('issue');
+  const [event, setEvent] = useState<LoopEvent>({ ...EVENT_TEMPLATES[0].preset, id: newEventId() });
+  // 规则模式
+  const [rule, setRule] = useState({
+    name: '', source: 'github', types: 'issues.opened', to: 'claude',
+    cwd: '~/code/app', group: 'dev', tell: 'needed' as TellMode,
+  });
 
   useEffect(() => {
     if (!open) return;
-    const t = window.setTimeout(() => {
-      try {
-        window.localStorage.setItem(FORM_KEY, JSON.stringify(form));
-      } catch {
-        /* noop */
-      }
-    }, 300);
-    return () => window.clearTimeout(t);
-  }, [form, open]);
+    setMode(defaultMode);
+    setEvent({ ...EVENT_TEMPLATES[0].preset, id: newEventId() });
+  }, [open, defaultMode]);
 
   function applyTemplate(key: string) {
-    const t = TEMPLATES.find((x) => x.value === key);
+    const t = EVENT_TEMPLATES.find((x) => x.value === key);
     if (!t) return;
     setTpl(key);
-    setForm((prev) => ({ ...t.preset, status: prev.status }));
+    setEvent((prev) => ({ ...t.preset, id: prev.id }));
   }
 
-  async function submit(e: React.FormEvent) {
+  async function submitEvent(e: React.FormEvent) {
     e.preventDefault();
-    if (!form.name.trim() || !form.category.trim()) {
-      emitToast('请填写工作流名称与分类');
+    if (!event.id.trim() || !event.type.trim()) {
+      emitToast('请填写事件 id 与类型');
       return;
     }
     setSubmitting(true);
     try {
-      const payload: WorkflowInput = {
-        ...form,
-        name: form.name.trim(),
-        category: form.category.trim(),
-        devices: Number(form.devices) || 1,
-        steps: Number(form.steps) || 1,
-        coverage: Number(form.coverage) || 0,
-        duration: Number(form.duration) || 1,
-      };
-      await api.workflows.create(payload);
-      try {
-        window.localStorage.removeItem(FORM_KEY);
-      } catch {
-        /* noop */
-      }
-      emitToast(`工作流已启动：${payload.name}`);
+      const res = await loopApi.postEvent({ ...event, id: event.id.trim(), type: event.type.trim() });
+      loopToast(
+        res.duplicate ? '事件重复，已去重' :
+        res.hopBlocked ? '跳数超限，已熔断' :
+        res.routed.length ? `已派活：${res.routed.join('、')}` : '事件已记录（未命中规则）',
+      );
       onClose();
-      await Promise.all([revalidateWorkflows(), revalidateUsage(), revalidateAudit()]);
+      await revalidateLoop();
     } catch {
       /* api-client 已统一 toast */
     } finally {
@@ -126,121 +88,126 @@ export function WorkflowFormModal({ open, onClose }: { open: boolean; onClose: (
     }
   }
 
-  const set = <K extends keyof WorkflowInput>(key: K, value: WorkflowInput[K]) =>
-    setForm((prev) => ({ ...prev, [key]: value }));
+  async function submitRule(e: React.FormEvent) {
+    e.preventDefault();
+    const types = rule.types.split(',').map((s) => s.trim()).filter(Boolean);
+    if (!rule.name.trim() || !types.length || !rule.to.trim() || !rule.cwd.trim()) {
+      emitToast('请填写规则名 / 触发类型 / 交给 / 目录');
+      return;
+    }
+    setSubmitting(true);
+    try {
+      const payload: LoopRule = {
+        name: rule.name.trim(),
+        when: { source: rule.source.trim() || 'manual', types },
+        to: rule.to.trim(),
+        cwd: rule.cwd.trim(),
+        group: rule.group.trim() || 'default',
+        tell: rule.tell,
+      };
+      const check = await loopApi.checkRule(payload);
+      if (!check.valid) {
+        emitToast(`规则校验未通过：${check.issues[0] ?? '请检查字段'}`);
+        return;
+      }
+      await loopApi.postRule(payload);
+      loopToast(`规则已登记：${payload.name}`);
+      onClose();
+      await revalidateLoop();
+    } catch {
+      /* api-client 已统一 toast */
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  const setEvt = <K extends keyof LoopEvent>(key: K, value: LoopEvent[K]) =>
+    setEvent((prev) => ({ ...prev, [key]: value }));
+  const setR = <K extends keyof typeof rule>(key: K, value: (typeof rule)[K]) =>
+    setRule((prev) => ({ ...prev, [key]: value }));
 
   return (
-    <Modal open={open} title="运行新工作流" onClose={onClose}>
-      <form className="wf-form" onSubmit={submit}>
-        <label htmlFor="fTpl">场景模板</label>
-        <select id="fTpl" value={tpl} onChange={(e) => applyTemplate(e.target.value)}>
-          {TEMPLATES.map((t) => (
-            <option key={t.value} value={t.value}>
-              {t.label}
-            </option>
-          ))}
+    <Modal open={open} title="Autoloop · 接入事件 / 新建规则" onClose={onClose}>
+      <form className="wf-form" onSubmit={mode === 'event' ? submitEvent : submitRule}>
+        <label htmlFor="fMode">操作类型</label>
+        <select id="fMode" value={mode} onChange={(e) => setMode(e.target.value as Mode)}>
+          <option value="event">手动接入事件（触发规则派活）</option>
+          <option value="rule">新建规则（登记触发条件）</option>
         </select>
 
-        <label htmlFor="fName">工作流名称</label>
-        <input
-          id="fName"
-          value={form.name}
-          onChange={(e) => set('name', e.target.value)}
-          required
-          placeholder="如：消息智能摘要 Agent"
-        />
-
-        <div className="form-row">
-          <div>
-            <label htmlFor="fCat">分类</label>
-            <input
-              id="fCat"
-              value={form.category}
-              onChange={(e) => set('category', e.target.value)}
-              required
-              placeholder="如 效率工具"
-            />
-          </div>
-          <div>
-            <label htmlFor="fStatus">状态</label>
-            <select
-              id="fStatus"
-              value={form.status}
-              onChange={(e) => set('status', e.target.value as WorkflowStatus)}
-            >
-              {STATUS_OPTIONS.map((s) => (
-                <option key={s.value} value={s.value}>
-                  {s.label}
-                </option>
+        {mode === 'event' ? (
+          <>
+            <label htmlFor="fTpl">事件模板</label>
+            <select id="fTpl" value={tpl} onChange={(e) => applyTemplate(e.target.value)}>
+              {EVENT_TEMPLATES.map((t) => (
+                <option key={t.value} value={t.value}>{t.label}</option>
               ))}
             </select>
-          </div>
-        </div>
 
-        <label htmlFor="fDesc">描述</label>
-        <input
-          id="fDesc"
-          value={form.description ?? ''}
-          onChange={(e) => set('description', e.target.value)}
-          placeholder="一句话描述工作流目标"
-        />
+            <label htmlFor="fId">事件 id（去重键）</label>
+            <input id="fId" value={event.id} onChange={(e) => setEvt('id', e.target.value)} required placeholder="evt_..." />
 
-        <div className="form-row">
-          <div>
-            <label htmlFor="fDev">设备数</label>
-            <input
-              id="fDev"
-              type="number"
-              min={1}
-              max={16}
-              value={form.devices}
-              onChange={(e) => set('devices', Number(e.target.value))}
-              required
-            />
-          </div>
-          <div>
-            <label htmlFor="fStep">步骤数</label>
-            <input
-              id="fStep"
-              type="number"
-              min={1}
-              max={99}
-              value={form.steps}
-              onChange={(e) => set('steps', Number(e.target.value))}
-              required
-            />
-          </div>
-        </div>
+            <div className="form-row">
+              <div>
+                <label htmlFor="fSrc">来源 source</label>
+                <input id="fSrc" value={event.source} onChange={(e) => setEvt('source', e.target.value)} required placeholder="github" />
+              </div>
+              <div>
+                <label htmlFor="fType">类型 type</label>
+                <input id="fType" value={event.type} onChange={(e) => setEvt('type', e.target.value)} required placeholder="issues.opened" />
+              </div>
+            </div>
 
-        <div className="form-row">
-          <div>
-            <label htmlFor="fCov">覆盖率 (%)</label>
-            <input
-              id="fCov"
-              type="number"
-              min={0}
-              max={100}
-              value={form.coverage}
-              onChange={(e) => set('coverage', Number(e.target.value))}
-              required
-            />
-          </div>
-          <div>
-            <label htmlFor="fDur">回归时长 (分)</label>
-            <input
-              id="fDur"
-              type="number"
-              min={1}
-              max={120}
-              value={form.duration}
-              onChange={(e) => set('duration', Number(e.target.value))}
-              required
-            />
-          </div>
-        </div>
+            <label htmlFor="fSubject">事项 subject（可选）</label>
+            <input id="fSubject" value={event.subject ?? ''} onChange={(e) => setEvt('subject', e.target.value)} placeholder="repo#128" />
+
+            <label htmlFor="fSummary">摘要（可选）</label>
+            <input id="fSummary" value={event.summary ?? ''} onChange={(e) => setEvt('summary', e.target.value)} placeholder="一句话描述" />
+          </>
+        ) : (
+          <>
+            <label htmlFor="rName">规则名</label>
+            <input id="rName" value={rule.name} onChange={(e) => setR('name', e.target.value)} required placeholder="如：跟进 PR 评论" />
+
+            <div className="form-row">
+              <div>
+                <label htmlFor="rSrc">触发源 source</label>
+                <input id="rSrc" value={rule.source} onChange={(e) => setR('source', e.target.value)} required placeholder="github" />
+              </div>
+              <div>
+                <label htmlFor="rTypes">触发类型（逗号分隔）</label>
+                <input id="rTypes" value={rule.types} onChange={(e) => setR('types', e.target.value)} required placeholder="issues.opened,issue.*" />
+              </div>
+            </div>
+
+            <div className="form-row">
+              <div>
+                <label htmlFor="rTo">交给 Agent</label>
+                <input id="rTo" value={rule.to} onChange={(e) => setR('to', e.target.value)} required placeholder="claude / codex" />
+              </div>
+              <div>
+                <label htmlFor="rCwd">工作目录 cwd</label>
+                <input id="rCwd" value={rule.cwd} onChange={(e) => setR('cwd', e.target.value)} required placeholder="~/code/app" />
+              </div>
+            </div>
+
+            <div className="form-row">
+              <div>
+                <label htmlFor="rGroup">分组 group</label>
+                <input id="rGroup" value={rule.group} onChange={(e) => setR('group', e.target.value)} placeholder="dev" />
+              </div>
+              <div>
+                <label htmlFor="rTell">通知策略 tell</label>
+                <select id="rTell" value={rule.tell} onChange={(e) => setR('tell', e.target.value as TellMode)}>
+                  {TELL_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+                </select>
+              </div>
+            </div>
+          </>
+        )}
 
         <button className="primary-btn" type="submit" disabled={submitting}>
-          {submitting ? '正在启动…' : '启动工作流'}
+          {submitting ? '正在提交…' : mode === 'event' ? '接入事件' : '登记规则'}
         </button>
       </form>
     </Modal>

@@ -8,7 +8,7 @@ import { TopNav } from './TopNav';
 import { useRequireAuth } from '@/lib/auth';
 
 /**
- * 工作台外壳：顶栏 + 侧栏 + 主区（+ 总览页右侧栏）
+ * 工作台外壳：顶栏 + 侧栏 + 主区（两栏，右侧 Aside 已下线）
  * 未登录时由 useRequireAuth 自动重定向到 /login
  */
 export function AppShell({ children }: { children: ReactNode }) {

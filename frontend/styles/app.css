@@ -37,8 +37,10 @@ body:has(.auth-page){background:var(--bg)}
 .avatar{width:34px;height:34px;border-radius:50%;background:var(--green-bg);display:flex;align-items:center;justify-content:center;color:var(--green-deep);font-size:19px;flex:none}
 .hamburger{display:none;width:38px;height:38px;border-radius:var(--r-el);align-items:center;justify-content:center;font-size:20px;color:var(--t1)}
 
-/* ===== 三栏布局 ===== */
-.app{display:grid;grid-template-columns:206px minmax(0,1fr) 326px;gap:18px;padding:16px 22px 28px;max-width:1760px;margin:0 auto;align-items:start}
+/* ===== 两栏布局（侧栏 + 主区）=====
+   右侧 Aside 已下线，网格不再保留第三列，避免宽屏出现整列空白；
+   max-width 收敛到 1440px 居中，主区宽度约 1170px，与原设计密度一致。 */
+.app{display:grid;grid-template-columns:206px minmax(0,1fr);gap:18px;padding:16px 22px 28px;max-width:1440px;margin:0 auto;align-items:start}
 .sidenav{background:#fff;border-radius:var(--r-card);box-shadow:var(--shadow);padding:12px;display:flex;flex-direction:column;gap:4px;position:sticky;top:76px;max-height:calc(100vh - 96px);overflow:auto}
 /* 同上：Link 渲染为 <a>，选择器必须覆盖 a，否则间距/悬停/激活态全部失效 */
 .sidenav a,.sidenav button{display:flex;align-items:center;gap:11px;padding:11px 13px;border-radius:var(--r-el);color:var(--t2);font-size:14px;font-weight:500;line-height:1.45;text-align:left;min-height:44px;width:100%;white-space:nowrap;transition:background .16s,color .16s}
@@ -313,7 +315,7 @@ body:has(.auth-page){background:var(--bg)}
 
 /* ===== 响应式（五断点，与原型完全一致） ===== */
 @media (max-width:1360px){
-  .app{grid-template-columns:196px minmax(0,1fr) 300px}
+  .app{grid-template-columns:196px minmax(0,1fr)}
   .kpi-num{font-size:25px}
 }
 @media (max-width:1180px){
@@ -479,8 +481,12 @@ body{padding-bottom:env(safe-area-inset-bottom)}
 button,[role="button"],a{touch-action:manipulation;-webkit-tap-highlight-color:transparent}
 :focus-visible{outline:2px solid var(--green-deep);outline-offset:2px}
 svg.ic{width:1em;height:1em;max-width:100%;max-height:100%;flex:none}
-.card,.kpi-card,.wf-card,.trace-card,.workflows-card,.auth-box,
-.sidenav,.main,.page,.row-2col,.tbl-wrap,.modal-box{min-width:0;max-width:100%}
+/* 注意：.auth-box(420px) / .modal-box(520px) 自带设计限宽，只补 min-width:0 防 flex 溢出，
+   切勿用全局 max-width:100% 覆盖——否则 PC 宽屏下登录/注册表单会铺满整个视口。
+   窄屏需要弹窗贴边时，由下方 @media(max-width:520px) 单独放宽。 */
+.card,.kpi-card,.wf-card,.trace-card,.workflows-card,
+.sidenav,.main,.page,.row-2col,.tbl-wrap{min-width:0;max-width:100%}
+.auth-box,.modal-box{min-width:0}
 
 @media (max-width:900px){
   .topnav{gap:8px;padding:0 12px;height:56px}

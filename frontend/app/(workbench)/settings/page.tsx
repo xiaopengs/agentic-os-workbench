@@ -5,26 +5,35 @@ import { Icon } from '@/components/icons/Icon';
 import { Chip } from '@/components/ui/WorkflowBits';
 import { LoadingRows, PageHeader } from '@/components/ui/PageHeader';
 import { useAuth } from '@/lib/auth';
-import { useWorkbench } from '@/lib/hooks';
-import { fmtMoney, relTime } from '@/lib/format';
+import { FACT_META, factTitle } from '@/lib/loop-format';
+import { useLoopState, useLoopFacts } from '@/lib/loop-hooks';
+import { relTime } from '@/lib/format';
 import { navByKey } from '@/lib/nav';
 
 const META = navByKey('settings');
 
+/**
+ * 设置页 · 视觉与旧版完全一致（.card / .kv-grid / .quota-bar / .tbl 卡片化 / .rel-btn）。
+ * 语义换成：账号不变；配额 → 内核累计用量与跳数熔断；审计日志 → 事实日志溯源（逐条 Fact）。
+ */
 export default function SettingsPage() {
   const { user, logout } = useAuth();
-  const data = useWorkbench();
+  const { data: state, isValidating } = useLoopState();
+  const { data: facts } = useLoopFacts();
   const [leaving, setLeaving] = useState(false);
 
-  const usage = data.usage;
-  const limit = usage?.limit ?? 100;
+  const usage = state?.usage;
+  const totals = state?.totals;
+  // 事实序号进度：以「已确认轮次 / 100」映射既有 quota-bar，纯展示（内核无月度配额上限）
   const runs = usage?.runs ?? 0;
-  const pct = limit > 0 ? Math.min(100, Math.round((runs / limit) * 100)) : 0;
+  const pct = Math.min(100, Math.round((runs / 100) * 100));
   const barCls = pct >= 100 ? ' full' : pct >= 80 ? ' hot' : '';
+
+  const factRows = [...(facts ?? [])].sort((a, b) => b.seq - a.seq).slice(0, 20);
 
   return (
     <>
-      <PageHeader crumb={META.crumb} title={META.title} badge={META.badge} sync={data.sync} />
+      <PageHeader crumb={META.crumb} title={META.title} badge={META.badge} sync={isValidating ? 'syncing' : 'ok'} />
 
       <div className="card" style={{ marginBottom: 18 }}>
         <div className="card-head">
@@ -60,25 +69,25 @@ export default function SettingsPage() {
 
       <div className="card" style={{ marginBottom: 18 }}>
         <div className="card-head">
-          <b>配额与用量</b>
-          <span className="sub">来自 GET /api/usage · 超额将返回 402</span>
+          <b>用量与跳数</b>
+          <span className="sub">来自 GET /api/loop/state · 事实日志累计（幂等重放不重复计费）</span>
         </div>
-        {usage ? (
+        {usage && totals ? (
           <>
             <div className="row-actions" style={{ justifyContent: 'space-between' }}>
               <span style={{ fontSize: 13, color: 'var(--t2)' }}>
-                本月 {usage.month} · 已用 {runs} / {limit} runs
+                已确认 {runs} runs · {totals.facts} 条事实 · 熔断 {totals.hopsBlocked} 次
               </span>
               <span style={{ fontSize: 13, fontWeight: 700, color: pct >= 100 ? 'var(--red)' : 'var(--green-deep)' }}>
-                {pct}%
+                {totals.queuedRuns} 排队
               </span>
             </div>
             <div className="quota-bar">
-              <i className={barCls.trim()} style={{ width: `${pct}%` }} />
+              <i className={barCls.trim()} style={{ width: `${Math.max(3, pct)}%` }} />
             </div>
             <div className="kv-grid">
               <div className="kv">
-                <div className="k">Runs</div>
+                <div className="k">已确认轮次</div>
                 <div className="v">{runs}</div>
               </div>
               <div className="kv">
@@ -86,8 +95,8 @@ export default function SettingsPage() {
                 <div className="v">{(usage.tokens ?? 0).toLocaleString('zh-CN')}</div>
               </div>
               <div className="kv">
-                <div className="k">成本</div>
-                <div className="v">{fmtMoney(usage.costCents ?? 0)}</div>
+                <div className="k">活跃规则</div>
+                <div className="v">{totals.activeRules} / {totals.rules}</div>
               </div>
             </div>
           </>
@@ -98,39 +107,39 @@ export default function SettingsPage() {
 
       <div className="card" style={{ marginBottom: 18 }}>
         <div className="card-head">
-          <b>审计日志</b>
-          <span className="sub">来自 GET /api/audit</span>
+          <b>事实日志溯源</b>
+          <span className="sub">来自 GET /api/loop/facts · 只追加、可完整重放</span>
           <span className="head-right">
-            <span className="count-pill">{data.audit.length}</span>
+            <span className="count-pill">{facts?.length ?? 0}</span>
           </span>
         </div>
-        {data.loading && !data.audit.length ? (
+        {!facts && !factRows.length ? (
           <LoadingRows rows={3} />
-        ) : data.audit.length ? (
+        ) : factRows.length ? (
           <div className="tbl-wrap">
             <table className="tbl">
               <thead>
                 <tr>
-                  <th>动作</th>
-                  <th>对象</th>
-                  <th>操作者</th>
+                  <th>序号</th>
+                  <th>类型</th>
+                  <th>内容</th>
                   <th>时间</th>
                 </tr>
               </thead>
               <tbody>
-                {data.audit.map((a) => (
-                  <tr key={a.id}>
-                    <td className="tbl-first tbl-name" data-label="">{a.action}</td>
-                    <td className="tbl-sub" data-label="对象">{a.target ?? '—'}</td>
-                    <td className="tbl-sub" data-label="操作者">{a.actor ?? '—'}</td>
-                    <td className="tbl-sub" data-label="时间">{relTime(a.at)}</td>
+                {factRows.map((f) => (
+                  <tr key={f.seq}>
+                    <td className="tbl-first tbl-num" data-label="">#{f.seq}</td>
+                    <td className="tbl-sub" data-label="类型">{FACT_META[f.kind]?.label ?? f.kind}</td>
+                    <td className="tbl-name" data-label="内容">{factTitle(f)}</td>
+                    <td className="tbl-sub" data-label="时间">{relTime(f.at)}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
         ) : (
-          <div className="empty-tip">暂无审计记录</div>
+          <div className="empty-tip">暂无事实记录</div>
         )}
       </div>
 

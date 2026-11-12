@@ -2,34 +2,49 @@
 
 import Link from 'next/link';
 import { Icon } from '@/components/icons/Icon';
-import { StatusPill, wfIcon } from '@/components/ui/WorkflowBits';
-import type { Workflow } from '@/lib/types';
+import { wfIcon } from '@/components/ui/WorkflowBits';
+import { relTime } from '@/lib/format';
+import { runStateChip } from '@/lib/loop-format';
+import type { LoopRun, RunState } from '@/lib/loop-types';
 
+/** RunState → 既有 .wf-status 三态（running / failed / done），视觉与 StatusPill 完全一致 */
+const RUN_STATUS_CLASS: Record<RunState, string> = {
+  queued: 'running', claimed: 'running', unknown: 'running',
+  done: 'done', nothing: 'done', cancelled: 'failed',
+};
+
+/**
+ * Recent Workflows · 视觉与原型完全一致（.workflows-card / .wf-top / .wf-grid / .wf-card / .wf-foot）。
+ * 语义从「最近工作流」换成「最近轮次 Runs」：3 张卡展示 rule / agent / 状态 / 回执摘要。
+ * 保留导出名与 onRun 回调名以兼容既有引用；按钮文案改为「接入事件」。
+ */
 export function RecentWorkflows({
-  workflows,
+  runs,
   loading,
   onRun,
 }: {
-  workflows: Workflow[];
+  runs: LoopRun[];
   loading: boolean;
   onRun: () => void;
 }) {
-  const rows = workflows.slice(0, 3);
+  const rows = [...runs]
+    .sort((a, b) => b.seq - a.seq)
+    .slice(0, 3);
 
   return (
     <div className="workflows-card">
       <div className="wf-top">
-        <b>Recent Workflows</b>
+        <b>Recent Runs</b>
         <span className="sub" style={{ fontSize: 12.5, color: 'var(--t3)' }}>
-          最近执行的典型场景与工作流
+          最近轮次 · 规则命中后派发的执行实例
         </span>
         <span className="head-right" style={{ marginLeft: 'auto', display: 'flex', gap: 12, alignItems: 'center' }}>
           <Link className="link-more" href="/workflows">
-            全部工作流 →
+            全部规则 →
           </Link>
           <button className="run-btn" onClick={onRun}>
             <Icon name="i-play" size={13} />
-            运行新工作流
+            接入事件
           </button>
         </span>
       </div>
@@ -41,39 +56,43 @@ export function RecentWorkflows({
         </div>
       ) : rows.length ? (
         <div className="wf-grid">
-          {rows.map((wf) => {
-            const [icon, tone] = wfIcon(wf.name);
+          {rows.map((run) => {
+            const [icon, tone] = wfIcon(run.rule);
+            const chip = runStateChip(run.state);
             return (
-              <div className="wf-card" key={wf.id}>
+              <div className="wf-card" key={run.id}>
                 <div className="wf-head">
                   <div className={`wf-ico ${tone}`}>
                     <Icon name={icon} />
                   </div>
                   <div>
-                    <div className="wf-title">{wf.name}</div>
-                    <div className="wf-cat">{wf.category}</div>
+                    <div className="wf-title">{run.rule}</div>
+                    <div className="wf-cat">{run.agent} · {run.lane || '主事项'}</div>
                   </div>
-                  <StatusPill status={wf.status} />
+                  <span className={`wf-status ${RUN_STATUS_CLASS[run.state] ?? 'done'}`}>
+                    {run.state === 'done' ? <Icon name="i-check" size={11} /> : <i />}
+                    {chip.text}
+                  </span>
                 </div>
                 <div className="wf-meta">
                   <span>
                     <Icon name="i-device" />
-                    {wf.devices}&nbsp;设备
+                    #{run.seq}
                   </span>
                   <span>
                     <Icon name="i-list" />
-                    {wf.steps}&nbsp;个步骤
+                    {run.eventSeqs.length}&nbsp;事件
                   </span>
                   <span>
                     <Icon name="i-target" />
-                    覆盖率&nbsp;{wf.coverage}%
+                    尝试&nbsp;{run.attempts}
                   </span>
                 </div>
                 <div className="wf-foot">
                   <div className="wf-bar">
-                    <i style={{ width: `${Math.min(100, Math.max(0, wf.coverage))}%` }} />
+                    <i style={{ width: `${run.state === 'done' ? 100 : run.state === 'claimed' ? 60 : 25}%` }} />
                   </div>
-                  <span className="wf-dur">Regression {wf.duration} min</span>
+                  <span className="wf-dur">{run.finishedAt ? relTime(run.finishedAt) : `hops ${run.hops}`}</span>
                 </div>
               </div>
             );
@@ -81,7 +100,7 @@ export function RecentWorkflows({
         </div>
       ) : (
         <div className="card">
-          <div className="empty-tip">暂无工作流记录，点击「运行新工作流」发起第一次仿真</div>
+          <div className="empty-tip">暂无轮次，点击「接入事件」或运行一条规则即可派活</div>
         </div>
       )}
     </div>

@@ -6,6 +6,11 @@
   "scripts": {
     "typecheck:backend": "tsc --noEmit -p backend/tsconfig.json",
     "test:api": "tsx tests/api-smoke.ts",
+    "test:loop-kernel": "tsx --test tests/loop-kernel.test.ts",
+    "test:loop-api": "tsx tests/loop-api-smoke.ts",
+    "test:loop": "npm run test:loop-kernel && npm run test:loop-api",
+    "test:loop-concurrency": "node tests/loop-concurrency-e2e.mjs",
+    "test:loop-ui": "node tests/loop-ui-viewports.mjs",
     "test:e2e": "node tests/e2e.mjs",
     "build:deploy": "node scripts/build-deploy.mjs",
     "build:app": "node scripts/build-app.mjs"

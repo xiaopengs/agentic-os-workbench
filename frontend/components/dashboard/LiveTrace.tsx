@@ -2,19 +2,24 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { Icon, type IconName } from '@/components/icons/Icon';
+import { Icon } from '@/components/icons/Icon';
 import { fmtClock } from '@/lib/format';
-import type { Trace, TraceKind } from '@/lib/types';
+import { FACT_META, factBadge, factSub, factTitle } from '@/lib/loop-format';
+import type { Fact } from '@/lib/loop-types';
 
-const KIND_ICON: Record<TraceKind, IconName> = {
-  Agent: 'i-bot',
-  Skill: 'i-cube',
-  Tool: 'i-wrench',
-  Contract: 'i-doc',
-};
-
-/** Live Trace · 数据来自 GET /api/traces（SWR 5s 自动重验证） */
-export function LiveTrace({ traces, loading }: { traces: Trace[]; loading: boolean }) {
+/**
+ * Live Trace · 视觉与原型完全一致（.trace-list / .trace-row / .tr-ico 四色调 / .tr-bar / .tr-badge）。
+ * 语义从「调用链路」换成「事实日志流」：逐条 Fact（事件溯源），
+ * 20+ 种 kind 通过 FACT_META 归入既有 4 个 .tr-ico 色调槽位，图标全部取自现有 IconSprite。
+ */
+export function LiveTrace({
+  facts, loading, pendingCards = 0,
+}: {
+  facts: Fact[];
+  loading: boolean;
+  /** 待拍板卡片数，用于卡头副标题（「今天要处理」提示，复用既有 .sub 文案位） */
+  pendingCards?: number;
+}) {
   const [now, setNow] = useState<Date | null>(null);
 
   useEffect(() => {
@@ -23,21 +28,20 @@ export function LiveTrace({ traces, loading }: { traces: Trace[]; loading: boole
     return () => window.clearInterval(t);
   }, []);
 
-  // 合同模块已下线：链路记录中不再展示 Contract 类型条目
-  const rows = [...traces]
-    .filter((t) => t.kind !== 'Contract')
-    .sort((a, b) => {
-      const ta = a.createdAt ? new Date(a.createdAt).getTime() : 0;
-      const tb = b.createdAt ? new Date(b.createdAt).getTime() : 0;
-      return tb - ta;
-    })
+  // 事实按序号倒序（最新在上），取最近 6 条
+  const rows = [...facts]
+    .filter((f) => Number.isFinite(f.seq))
+    .sort((a, b) => b.seq - a.seq)
     .slice(0, 6);
 
   return (
     <div className="card trace-card">
       <div className="card-head">
-        <b>Live Trace</b>
-        <span className="sub">实时调用链路与性能分析</span>
+        <b>事实日志 · Fact Log</b>
+        <span className="sub">
+          事件溯源 · 只追加事实流
+          {pendingCards > 0 ? ` · ${pendingCards} 张卡片待拍板` : ''}
+        </span>
         <span className="head-right">
           <span className="trace-clock">{now ? fmtClock(now) : '--:--:--'}</span>
           <button className="mini-more" aria-label="更多" title="更多">
@@ -48,32 +52,36 @@ export function LiveTrace({ traces, loading }: { traces: Trace[]; loading: boole
 
       <div className="trace-list">
         {loading && !rows.length ? (
-          <div className="empty-tip">正在加载调用链路数据…</div>
+          <div className="empty-tip">正在加载事实日志…</div>
         ) : rows.length ? (
-          rows.map((t) => (
-            <div className="trace-row" key={t.id}>
-              <div className={`tr-ico ${t.kind}`}>
-                <Icon name={KIND_ICON[t.kind] ?? 'i-cube'} />
+          rows.map((f) => {
+            const meta = FACT_META[f.kind] ?? { label: f.kind, tone: 'Agent' as const, icon: 'i-cube' as const };
+            const badge = factBadge(f);
+            return (
+              <div className="trace-row" key={f.seq}>
+                <div className={`tr-ico ${meta.tone}`}>
+                  <Icon name={meta.icon} />
+                </div>
+                <div className="tr-mid">
+                  <div className="tr-type">{factSub(f)}</div>
+                  <div className="tr-name">{factTitle(f)}</div>
+                </div>
+                <span className="tr-time">{fmtClock(new Date(f.at))}</span>
+                <span className="tr-cost">#{f.seq}</span>
+                <div className="tr-bar">
+                  <i style={{ width: `${Math.min(95, 30 + ((f.hops ?? 0) * 9))}%` }} />
+                </div>
+                <span className={`tr-badge${badge.warn ? ' warn' : ''}`}>{badge.text}</span>
               </div>
-              <div className="tr-mid">
-                <div className="tr-type">{t.kind}</div>
-                <div className="tr-name">{t.name}</div>
-              </div>
-              <span className="tr-time">{t.time}</span>
-              <span className="tr-cost">{t.cost}ms</span>
-              <div className="tr-bar">
-                <i style={{ width: `${Math.min(95, Math.round((t.cost / 220) * 88) + 8)}%` }} />
-              </div>
-              <span className={`tr-badge${t.status === 'Success' ? '' : ' warn'}`}>{t.status}</span>
-            </div>
-          ))
+            );
+          })
         ) : (
-          <div className="empty-tip">暂无 Trace 记录，运行工作流后将自动生成调用链</div>
+          <div className="empty-tip">暂无事实记录，接入事件或运行规则后将自动写入日志</div>
         )}
       </div>
 
-      <Link className="trace-more" href="/workflows">
-        View full trace →
+      <Link className="trace-more" href="/settings">
+        查看完整事实日志 →
       </Link>
     </div>
   );

@@ -25,6 +25,7 @@ import { listContracts, listDevices, listSkills } from './assets';
 import { getUsage } from './usage';
 import { listAudit } from './audit';
 import { postCopilot } from './copilot';
+import * as loop from './loop';
 
 export type Handler = (ctx: ApiCtx) => Promise<Response>;
 
@@ -66,6 +67,30 @@ route('GET', '/audit', listAudit);
 
 /* ── AI Copilot（SSE） ─────────────────────────────────────── */
 route('POST', '/ai/copilot', postCopilot);
+
+/* ── Agent Autoloop 内核（事件驱动 / 规则 / 轮次 / 卡片 / 溯源）──
+   与旧接口并存，前端 M2 逐步切换，随时可回退。 */
+route('GET', '/loop/state', loop.getState);
+route('GET', '/loop/healthz', loop.getHealthz);
+route('GET', '/loop/facts', loop.getFacts);
+route('GET', '/loop/runs', loop.getRuns);
+route('GET', '/loop/runs/:id/why', loop.getWhy);
+route('GET', '/loop/events/:seq', loop.getEventBySeq);
+route('GET', '/loop/cards', loop.getCards);
+route('GET', '/loop/rules', loop.listRules);
+route('POST', '/loop/events', loop.postEvent);
+route('POST', '/loop/emit', loop.postEmit);
+route('POST', '/loop/rules', loop.postRule);
+route('POST', '/loop/rules/check', loop.postRuleCheck);
+route('POST', '/loop/rules/:name/pause', loop.postRulePause);
+route('POST', '/loop/rules/:name/resume', loop.postRuleResume);
+route('POST', '/loop/rules/:name/run', loop.postRuleRun);
+route('POST', '/loop/runs/:id/claim', loop.postRunClaim);
+route('POST', '/loop/runs/:id/result', loop.postRunResult);
+route('POST', '/loop/cards/:id/answer', loop.postCardAnswer);
+route('POST', '/loop/cards/:id/resolve', loop.postCardResolve);
+route('POST', '/loop/tick', loop.postTick);
+route('POST', '/loop/plugins', loop.postPlugin);
 
 /* ── 健康检查 ───────────────────────────────────────────────── */
 route('GET', '/health', async () =>
