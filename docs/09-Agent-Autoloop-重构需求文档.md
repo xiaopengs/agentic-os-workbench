@@ -319,7 +319,31 @@ autoloop 完整能力折算 **远超 4 个模块**，一次性全量搭建必然
 | 本地预览服务（M4 构建） | 3737 `server.mjs` | `/` 200 · healthz `autoloop-web-0.4.0` |
 | 目视核对 | 规则页 / 插件页 / 溯源 Modal 三张截图 | 白底绿系圆角卡片、复用原视觉，无溢出/黑块/错位 |
 
-  > **部署状态**：线上 3000 实例与外网链接（`https://a00b3c39736f37990.app.workbuddy.host/?sharecode=Q4ABTA5LR3`）仍为 M1 之前基线版；按分期，重新发布在 **M5** 执行，避免把半成品推到线上。M4 全部验证在本地 3737 预览服务完成。
-  > **提交状态**：M3 已提交（`04158c14`）；M4 已提交（`6c72a157`，20 文件，parent `04158c14`，历史连续、非 force）。
+  > **部署状态**：外网链接（`https://a00b3c39736f37990.app.workbuddy.host/?sharecode=Q4ABTA5LR3`）已在 **M5** 重新发布，现网运行 M4（`autoloop-web-0.4.0`）；M1–M4 的分期验证全部先在本地 3737 预览服务完成，M5 才对外发版。
+  > **提交状态**：M3 `04158c14` → M4 `6c72a157`（20 文件）→ 文档同步 `5235a3f6` 均已入库，parent 链连续、非 force；本文件含 M5 部署记录与线上验收矩阵，随 M5 收尾的文档增量提交一并入库。
+  > **M5（本次）**：用户要求「再部署一下 我试试」，当轮授权明确，故执行线上发版；后续「部署一下我看看」再做一次幂等重发并通过外网全链路复验（平台重启后自启动配置仍稳定拉起 M4）。详见文末 M5 实施日志。
 
 - **2026-11-12 GitHub 提交（M4）**：commit `6c72a157ae9a3d71dfefba0e3405fd7d367a4e1b`（parent `04158c14`），20 文件（17 修改 + 3 新增）。沿用 `sandbox-github-commit` skill 的 Git Data API 路径；提交前以 M3 codeload 快照作基线逐文件比对，剔除三类误报——`package-lock.json`（本地陈旧版，提交会回退远端 `optionalDependencies` 修复）、`frontend/next-env.d.ts`、`frontend/tsconfig.tsbuildinfo`（构建产物）；显式 20 文件清单隔离凭证，Token 仅单次环境变量注入、不落盘不回显。提交后独立校验：ref 指向新 commit、`parents[0]` = 原 HEAD、20 文件状态分布、关键内容（`shared/loop.ts` 版本 `0.4.0`、`getHealthz` 引用常量）、`frontend/styles/tokens.css` 未被 `.gitignore` 误伤、tree 未截断（134 blob）。项目内凭证残留 / `.git` / remote URL / shell 配置扫描均干净。已提醒用户 revoke 该 classic PAT。
+
+- **2026-11-12 M5 完成（部署上线 + 端到端验证）**：用户当轮明确要求「再部署一下 我试试」，按 `sites` skill 的授权规则执行线上发版，链接沿用固定 `appName` 不变。
+  - **根因（顺带根治反复「自动重启失败」）**：现网 3000 端口长期被一个从登录 shell 起的旧基线进程占着（把 M1 前代码缓在进程内存，healthz 返回 404），而平台自启动配置里是一份坏命令——`HOST=` 空值、`next start` 与 `output: standalone` 冲突、且根 `package.json` 根本没有 `start` 脚本（`detectNodeStartCmd` 会回落到不存在的 `npm start`）。发布脚本若用默认探测命令，重启必然失败，且就绪探测会「假绿」命中旧进程。
+  - **方案**：先停旧基线进程释放 3000（避免探测假绿 / 新进程 `EADDRINUSE`）；再用 `publish.js --start-cmd` 把自启动配置**显式覆盖**为已验证的 `server.mjs` 命令，注入完整环境变量（`PORT/HOST/LOCAL_STORE/LOCAL_STORE_PATH/LOCAL_AI_MOCK/JWT_SECRET/NODE_ENV`），并 `--install-cmd ""` 跳过安装（依赖齐全、避免 `package-lock.json` 规范化污染）。线上用独立数据文件 `.data/store-online.json`，与本地 3737 预览隔离、互不串扰。
+  - **确证生效**：3000 进程 cmdline 为 `node --import tsx/esm frontend/server.mjs`（非 `next start`），7 项环境变量全部正确注入，独立 store 文件已生成，healthz `autoloop-web-0.4.0`。自启动配置自此为正确命令，平台后续重启不再失败。
+- **2026-11-12 M5 线上验收（全绿）**：
+
+| 验证项 | 结果 |
+|---|---|
+| 发布 | `shareLink` 稳定不变、`verified:true` |
+| 外网 healthz（先建 sharecode 会话） | `autoloop-web-0.4.0`（旧基线为 404） |
+| 外网首页 / 登录页 | 均 200 |
+| 外网注册 → `/loop/state` | 201 / 200，`seq=11`、4 规则、7 插件、`disabledPlugins` 字段存在（真实 M4 内核数据） |
+| 外网 M4 新端点 | `rules/check` 合法 `valid:true`、`emit` 命中「跟进 GitHub Issue」且不落库、`plugin disable(github)` → `disabledPlugins=['github']` 且停用后 `matched=[]`、`enable` 后恢复命中 |
+| 外网四视口 375/768/1440/1920 | **52 / 0**：登录、事件派活、无横向溢出、无超大 SVG、M3 审批台、M4 溯源入口 / 规则预演 / 插件启停（7 个）/ 登记插件入口、无运行时错误 |
+
+  > **隐私与数据边界**：部署后链接公网可访问，未预填任何真实隐私数据；线上为独立演示种子（4 规则 / 7 插件 / 11 事实），与本地预览数据隔离。sharecode 是链接组成部分，必须完整保留。
+
+- **2026-11-12 M5 收尾（幂等重发 + 自启动稳定性复验）**：
+  - **幂等重发**：用户后续「部署一下我看看」，再跑一次 `publish.js`（显式 `--start-cmd`、`--install-cmd ""`），`shareLink` 不变、`verified:true`；重发后严格核对进程身份（PID `16205` → `18267`、cmdline 为 `server.mjs`、7 项环境变量正确注入）排除「就绪探测假绿」，本地与外网 healthz 均 `0.4.0`，外网注册 201 / `/loop/state` 200（`seq=11`、4 规则、`disabledPlugins` 在）、`rules/check valid:true`、`emit` 命中「跟进 GitHub Issue」；重发后线上 1440 总览实拍正常。
+  - **自启动修复实证**：距首次发版约 21 小时内平台曾自动重启，3000 的 PID 由 `46287` 变为 `16205`，且自动以修好的 `server.mjs` 配置拉起 M4（healthz `0.4.0`）——证明坏命令被覆盖后，平台被动重启也能稳定拉起，不再复发「拉不起来」。
+  - **「自动重启失败」提醒定性**：多轮该提醒复验时两个服务均 `/` 200、healthz `0.4.0`、PID 未被替换、端口唯一；判定为平台 dev-server watcher 的监控层噪声（它预期 Next dev server，实际跑的是 `server.mjs` 生产服务），与线上服务可用性无关，无需操作。
+  - **收尾提交**：本文件（M5 部署记录 + 线上验收矩阵 + 上述复验）为唯一未入库改动，以 M5 收尾文档增量提交入库，历史连续、非 force。
