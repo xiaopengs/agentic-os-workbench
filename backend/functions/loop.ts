@@ -8,7 +8,7 @@
  * 路由见 backend/functions/router.ts 的 /loop/* 段。
  */
 import {
-  RECEIPT_OUTCOMES, type LoopEvent, type LoopInput, type LoopPlugin, type LoopReceipt, type LoopRule,
+  LOOP_KERNEL_VERSION, RECEIPT_OUTCOMES, type LoopEvent, type LoopInput, type LoopPlugin, type LoopReceipt, type LoopRule,
 } from '../../shared/loop';
 import { requireUser } from '../lib/auth';
 import { readJsonBody, type ApiCtx } from '../lib/http';
@@ -16,7 +16,7 @@ import { repo } from '../lib/kv';
 import { commit, loopFacts, loopState, loopWhy, readView } from '../lib/loop/store';
 import { ensureLoopSeeded } from '../lib/loop/seed';
 import { validateEvent, validateRule, matchRules, decide } from '../lib/loop/kernel';
-import { badRequest, conflict, notFound, ok } from '../lib/resp';
+import { badRequest, conflict, forbidden, notFound, ok } from '../lib/resp';
 
 /** 外壳注入当前时间（内核绝不自己读时钟） */
 function nowOf(ctx: ApiCtx): string {
@@ -25,12 +25,13 @@ function nowOf(ctx: ApiCtx): string {
   return injected && !Number.isNaN(Date.parse(injected)) ? injected : new Date().toISOString();
 }
 
-async function prepare(ctx: ApiCtx): Promise<{ r: Awaited<ReturnType<typeof repo>>; uid: string; now: string }> {
+async function prepare(ctx: ApiCtx): Promise<{ r: Awaited<ReturnType<typeof repo>>; uid: string; email: string; now: string }> {
   const r = await repo(ctx.env);
   const user = await requireUser(ctx, r);
   const now = nowOf(ctx);
   await ensureLoopSeeded(r, user.id, now);
-  return { r, uid: user.id, now };
+  // email 由会话注入，作为卡片应答者身份（by），客户端不可伪造
+  return { r, uid: user.id, email: user.email, now };
 }
 
 /* ── 只读查询 ───────────────────────────────────────────────── */
@@ -40,7 +41,8 @@ export async function getState(ctx: ApiCtx): Promise<Response> {
 }
 
 export async function getHealthz(): Promise<Response> {
-  return ok({ status: 'ok', kernel: 'autoloop-web-0.3.0', at: new Date().toISOString() });
+  // 版本取自单一事实源，避免内核 bump 后健康探针仍报旧版本
+  return ok({ status: 'ok', kernel: LOOP_KERNEL_VERSION, at: new Date().toISOString() });
 }
 
 export async function getFacts(ctx: ApiCtx): Promise<Response> {
@@ -238,7 +240,7 @@ export async function postRunResult(ctx: ApiCtx): Promise<Response> {
 
 /* ── 卡片：回答 / 结案 ─────────────────────────────────────── */
 export async function postCardAnswer(ctx: ApiCtx): Promise<Response> {
-  const { r, uid, now } = await prepare(ctx);
+  const { r, uid, email, now } = await prepare(ctx);
   const body = await readJsonBody(ctx.req, ctx.raw);
   const view = await readView(r, uid);
   const card = view.cards[ctx.params.id];
@@ -248,10 +250,13 @@ export async function postCardAnswer(ctx: ApiCtx): Promise<Response> {
   if (choice !== undefined && (!Number.isInteger(choice) || choice < 0 || choice >= card.options.length)) {
     throw badRequest('choice 超出选项范围');
   }
+  // M4：通道级应答身份校验完全下沉内核（卡片 answerers 白名单 vs 会话注入的 by）。
+  // 内核拒绝时不产任何事实 → 外壳映射 403；业务逻辑零写在 HTTP 层。
   const { facts } = await commit(r, uid, {
     kind: 'card.answer', id: ctx.params.id, choice,
-    text: body.text as string | undefined, by: 'owner',
+    text: body.text as string | undefined, by: email,
   }, now);
+  if (!facts.length) throw forbidden('当前身份不在该卡片的通道应答者名单内');
   const resumed = facts.find((f) => f.kind === 'run.queued') as
     | Extract<typeof facts[number], { kind: 'run.queued' }> | undefined;
   return ok({
@@ -290,4 +295,24 @@ export async function postPlugin(ctx: ApiCtx): Promise<Response> {
   const plugin = body as unknown as LoopPlugin;
   const { facts } = await commit(r, uid, { kind: 'plugin.upsert', plugin }, now);
   return ok({ plugin, facts: facts.map((f) => f.seq) }, { status: 201 });
+}
+
+/** 停用插件：内核校验存在性 + 幂等，未产出事实 → 404（不存在或已停用） */
+export async function postPluginDisable(ctx: ApiCtx): Promise<Response> {
+  const { r, uid, now } = await prepare(ctx);
+  const body = await readJsonBody(ctx.req, ctx.raw);
+  const { facts } = await commit(r, uid, {
+    kind: 'plugin.disable', id: ctx.params.id,
+    reason: body.reason as string | undefined,
+  }, now);
+  if (!facts.length) throw notFound('插件不存在或已停用');
+  return ok({ disabled: true, id: ctx.params.id, facts: facts.map((f) => f.seq) });
+}
+
+/** 启用插件：内核校验是否已停用，未产出事实 → 404 */
+export async function postPluginEnable(ctx: ApiCtx): Promise<Response> {
+  const { r, uid, now } = await prepare(ctx);
+  const { facts } = await commit(r, uid, { kind: 'plugin.enable', id: ctx.params.id }, now);
+  if (!facts.length) throw notFound('插件不存在或未被停用');
+  return ok({ disabled: false, id: ctx.params.id, facts: facts.map((f) => f.seq) });
 }

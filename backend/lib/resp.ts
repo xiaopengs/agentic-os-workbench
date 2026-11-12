@@ -34,6 +34,9 @@ export const quotaExceeded = (message = '本月配额已耗尽，请升级 Pro �
 export const notFound = (message = '资源不存在'): ApiError =>
   new ApiError(message, ERR.NOT_FOUND, 404);
 export const conflict = (message: string): ApiError => new ApiError(message, ERR.CONFLICT, 409);
+/** M4：应答身份不在通道白名单 → 403（内核不产事实时由外壳映射） */
+export const forbidden = (message: string): ApiError =>
+  new ApiError(message, 'FORBIDDEN', 403);
 export const misconfig = (message: string): ApiError =>
   new ApiError(message, ERR.SERVER_MISCONFIG, 500);
 export const aiUnavailable = (message = 'AI Gateway 暂不可用，请稍后重试'): ApiError =>

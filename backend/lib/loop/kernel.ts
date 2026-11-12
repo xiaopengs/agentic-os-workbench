@@ -119,6 +119,7 @@ export function emptyView(timezone = 'Asia/Shanghai'): LoopView {
     rules: {},
     plugins: { agents: {}, sources: {}, channels: {}, deliveries: {} },
     dedupe: {}, events: [], runs: {}, cards: {}, lanes: {}, timers: [], pauses: {},
+    disabledPlugins: {},
     usage: { runs: 0, tokens: 0, costCents: 0 },
     receipts: {}, cronFired: {},
   };
@@ -140,6 +141,7 @@ function cloneView(v: LoopView): LoopView {
     lanes: Object.fromEntries(Object.entries(v.lanes).map(([k, l]) => [k, { ...l }])),
     timers: v.timers.map((t) => ({ ...t })),
     pauses: { ...v.pauses },
+    disabledPlugins: { ...v.disabledPlugins },
     usage: { ...v.usage },
     receipts: { ...v.receipts },
     cronFired: { ...v.cronFired },
@@ -186,6 +188,16 @@ export function evolve(view: LoopView, fact: Fact): LoopView {
       else if (p.kind === 'source') v.plugins.sources[p.id] = { ...p };
       else if (p.kind === 'channel') v.plugins.channels[p.id] = { ...p };
       else if (p.kind === 'delivery') v.plugins.deliveries[p.id] = { ...p };
+      break;
+    }
+    case 'plugin.disabled': {
+      const f = fact as Extract<Fact, { kind: 'plugin.disabled' }>;
+      v.disabledPlugins[f.id] = { since: f.at, reason: f.reason };
+      break;
+    }
+    case 'plugin.enabled': {
+      const f = fact as Extract<Fact, { kind: 'plugin.enabled' }>;
+      delete v.disabledPlugins[f.id];
       break;
     }
     case 'cron.fired': {
@@ -360,10 +372,23 @@ function activeRunFor(view: LoopView, lane: string, rule: string): LoopRun | und
   );
 }
 
-/** 匹配一条事件应派给哪些规则（跳过暂停/停用规则） */
+/** 四类插件是否含某 id */
+function hasPlugin(view: LoopView, id: string): boolean {
+  const p = view.plugins;
+  return !!(p.agents[id] || p.sources[id] || p.channels[id] || p.deliveries[id]);
+}
+
+/**
+ * 匹配一条事件应派给哪些规则（跳过暂停/停用规则）。
+ * M4：规则指向的 Agent 或事件来源 Source 被停用时不再派活；
+ *     `when.source` 对应已登记且被停用的 Source 插件时同样跳过。
+ */
 export function matchRules(view: LoopView, event: LoopEvent): LoopRule[] {
+  const disabled = view.disabledPlugins ?? {};
+  if (disabled[event.source] && view.plugins.sources[event.source]) return [];
   return Object.values(view.rules).filter((rule) => {
     if (rule.enabled === false || rule.paused || view.pauses[rule.name]) return false;
+    if (disabled[rule.to] && view.plugins.agents[rule.to]) return false;
     if (!isEventWhen(rule.when)) return false;
     return rule.when.source === event.source && typeMatches(rule.when.types, event.type);
   });
@@ -431,11 +456,18 @@ function emitEvent(ctx: DecideCtx, event: LoopEvent, hops: number): void {
 function makeCard(ctx: DecideCtx, spec: {
   kind: CardKind; state: CardState; title: string; text: string; options: string[];
   recommend?: number; lane: string; about?: string; key?: string; run?: string;
+  channel?: string;
 }): LoopCard {
+  // M4：回执指定 channel 时，把该通道当前的 answerers 名单快照进卡片（重放确定）；
+  //      未指定或通道无名单 → answerers 为空，沿用 M1「登录本人即可回答」。
+  const answerers = spec.channel
+    ? ctx.view.plugins.channels[spec.channel]?.answerers
+    : undefined;
   return {
     id: `card_placeholder`, version: 1, kind: spec.kind, state: spec.state,
     title: spec.title, text: spec.text, options: spec.options, recommend: spec.recommend,
     lane: spec.lane, about: spec.about, key: spec.key, run: spec.run, createdAt: ctx.now,
+    channel: spec.channel, answerers: answerers ? [...answerers] : undefined,
   };
 }
 
@@ -456,6 +488,7 @@ function applyReceiptActions(ctx: DecideCtx, run: LoopRun, receipt: LoopReceipt)
     createCard(ctx, {
       kind: 'ask', state: 'open', title: a.title, text: a.text ?? '', options: a.options,
       recommend: a.recommend, lane: run.lane, about: a.about, key: a.key, run: run.id,
+      channel: a.channel,
     });
   }
   for (const n of receipt.notice ?? []) {
@@ -498,6 +531,17 @@ export function decide(view: LoopView, input: LoopInput, now: string): Fact[] {
 
     case 'plugin.upsert':
       mk(ctx, 'plugin.upserted', { plugin: input.plugin }, input.plugin.id);
+      break;
+
+    case 'plugin.disable':
+      if (hasPlugin(ctx.view, input.id) && !ctx.view.disabledPlugins[input.id]) {
+        mk(ctx, 'plugin.disabled', { id: input.id, reason: input.reason }, input.id);
+      }
+      break;
+    case 'plugin.enable':
+      if (ctx.view.disabledPlugins[input.id]) {
+        mk(ctx, 'plugin.enabled', { id: input.id }, input.id);
+      }
       break;
 
     case 'rule.upsert': {
@@ -564,6 +608,9 @@ export function decide(view: LoopView, input: LoopInput, now: string): Fact[] {
     case 'card.answer': {
       const card = ctx.view.cards[input.id];
       if (!card || card.state !== 'open' || card.kind !== 'ask') break;
+      // M4 通道级应答身份校验：卡片快照了白名单时，by 必须在名单内，否则拒绝（不产任何事实）。
+      // 名单为空（未指定 channel 或通道未配 answerers）沿用 M1「登录本人即可回答」。
+      if (card.answerers?.length && !card.answerers.includes(input.by)) break;
       mk(ctx, 'card.answered', { id: input.id, choice: input.choice, text: input.text, by: input.by }, input.id);
       // 回答是一条新事件：接上原来的事项续跑（挂起零消耗 → 现在才启动）
       const rule = ctx.view.rules[card.lane.split('\u0000')[0]] ?? undefined;
@@ -700,7 +747,8 @@ export function stateOf(view: LoopView, now: string): LoopState {
     rules, agents: Object.values(view.plugins.agents), sources: Object.values(view.plugins.sources),
     channels: Object.values(view.plugins.channels), deliveries: Object.values(view.plugins.deliveries),
     events, runs: sortedRuns(view), cards,
-    timers: view.timers, pauses: view.pauses, usage: { ...view.usage },
+    timers: view.timers, pauses: view.pauses,
+    disabledPlugins: { ...(view.disabledPlugins ?? {}) }, usage: { ...view.usage },
   };
 }
 

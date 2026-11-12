@@ -220,7 +220,7 @@ autoloop 完整能力折算 **远超 4 个模块**，一次性全量搭建必然
 | 「UI 一致」的边界 | 指标签文案可否改 | **可改文案、不可改视觉**（见 §3） |
 | 旧 `workflows/skills` API | 直接删还是并存 | **并存**，M2 前端切换后 M5 再评估下线 |
 | 事实日志存储 | 单键数组 vs 分段 | M1 用单键 append（规模足够）；后续可分段不改接口 |
-| 卡片回答身份 | 通道 `answerers` 校验 | M1 简化为「登录本人即可回答」，M4 补通道级校验 |
+| 卡片回答身份 | 通道 `answerers` 校验 | **M4 已闭环**：卡片创建时按通道快照名单，`by` 由会话注入，名单外 403 且不产事实 |
 | 定时/复查 | 需要真实时钟 | 内核不读时钟，由 `POST /tick` 外壳注入 `now` 驱动 |
 
 ---
@@ -232,7 +232,8 @@ autoloop 完整能力折算 **远超 4 个模块**，一次性全量搭建必然
 | M1 | `shared/loop.ts` · `backend/lib/loop/kernel.ts` · `backend/lib/loop/store.ts` · `backend/lib/loop/seed.ts` · `backend/functions/loop.ts` · `backend/functions/router.ts`（注册 21 条 `/loop/*` 路由）· `tests/loop-kernel.test.ts`（68 断言）· `tests/loop-api-smoke.ts`（39 项 REST 全链路）· `package.json`（`test:loop*` 脚本）· 本文档 |
 | M2 | 前端数据层 `frontend/lib/loop-{types,format,api,hooks}.ts`（镜像/映射/端点/SWR，零新 CSS）；改造 `KpiGrid`/`LiveTrace`/`RecentWorkflows`/`WorkflowFormModal` + 4 页面（`page.tsx`/`workflows`/`skills`/`settings`）+ `nav.ts`/`TopNav` 文案；`tests/loop-ui-viewports.mjs`（56 项四视口）、`tests/loop-concurrency-e2e.mjs`（30 项并发）|
 | M3 | 审批卡片台 `frontend/components/dashboard/ApprovalCards.tsx`（复用 `.card/.wf-card/.chip/.run-btn`，零新增 CSS）+ 总览接线 `page.tsx`（审批台置顶 + 待拍板条目跳 `#approval`）；`tests/loop-approval-e2e.mjs`（37 项全链路 e2e）；`tests/loop-ui-viewports.mjs`（扩至 74 项，含审批台四视口 + 拍板续跑实操）；`package.json`（`test:loop-approval` 脚本）· 本文档 |
-| M4+ | 见各期实施记录（追加于本文末「实施日志」） |
+| M4 | 后端：`shared/loop.ts`（`plugin.disabled/enabled` 事实+输入+`disabledPlugins` 投影+卡片 `channel/answerers` 快照+`LOOP_API.PLUGIN_*`+版本 `0.4.0`）· `backend/lib/loop/kernel.ts`（evolve/decide/matchRules/makeCard/card.answer 校验/stateOf）· `backend/functions/loop.ts`（`postPluginDisable/Enable`、`postCardAnswer` 会话注入 `by` + 403 映射）· `backend/lib/resp.ts`（`forbidden`）· `router.ts`（2 条启停路由）。前端：`frontend/lib/loop-{types,api,format}.ts` 同步 · `skills/page.tsx`（停用/启用 + 登记插件表单）· `components/modals/RunWhyModal.tsx`（why 溯源时间线）· `components/dashboard/RulePreview.tsx`（check/emit 预演）· `RecentWorkflows`（溯源按钮）· `page.tsx`/`workflows/client.tsx` 接线。`tests/loop-kernel.test.ts`（91）· `tests/loop-api-smoke.ts`（61）· `tests/loop-m4-e2e.mjs`（36 项全链路）· `tests/loop-ui-viewports.mjs`（扩至 102）· `package.json`（`test:loop-m4`）· 本文档 |
+| M5+ | 见各期实施记录（追加于本文末「实施日志」） |
 
 ---
 
@@ -292,3 +293,31 @@ autoloop 完整能力折算 **远超 4 个模块**，一次性全量搭建必然
 | 目视核对 | 审批台总览截图 | 「今天要处理」1 张待拍板、审批台 3 选项、事实日志「事件→排队→回执→卡片创建」闭环，视觉与原项目一致 |
 
   > 说明：M3 未改种子，首次打开审批台为空态并引导「演示一次拍板」——这是刻意设计，让 `ask→open（无新 run）→answer→新 run` 由用户**实操触发、真实写事实日志**，而非预置静态假数据；同时保住 M1/M2 已验证的 `facts=11 / seq=11` 等并发断言不被改动。
+
+- **2026-11-12 GitHub 提交（M3 审批卡片台）**：commit `04158c14`（parent `43746ca4`，历史连续、非 force），6 文件（4 修改 + 2 新增），沿用 `sandbox-github-commit` skill 的 Git Data API 路径（`blob → tree → commit → PATCH ref`）与显式文件清单隔离凭证，Token 仅单次环境变量注入、不落盘不回显；远端 tree 与 commit 已独立校验通过。
+- **2026-11-12 M4 完成（插件体系启停 + why 溯源视图 + 规则校验/预演 + 通道级应答身份）**：继续严格「UI 以当前项目风格为准」，`frontend/styles/*`、图标体系、响应式断点、布局骨架、登录注册页**一行未动**；三块新 UI 全部复用既有语义类（`.card/.wf-form/.tbl/.chip/.primary-btn/.icon-btn/.trace-row/.tr-ico/.tr-mid/.tr-bar/.tr-badge`），**零新增 CSS**：
+  - **后端 · 插件启停事实化**：`shared/loop.ts` 增 `plugin.disabled/plugin.enabled` 事实与输入、`LoopView/LoopState.disabledPlugins` 投影、`LOOP_API.PLUGIN_DISABLE/ENABLE`；内核 `evolve` 维护停用表，`decide` 拒绝对未登记/已停用插件的操作，`matchRules` 过滤停用 Source/Agent → **停用后不派活**，`stateOf` 输出停用表。投影结构变更，`LOOP_KERNEL_VERSION` 从 `0.3.0` bump 到 **`autoloop-web-0.4.0`**，旧投影按版本不匹配自动重放重建。
+  - **后端 · 通道级应答身份**：`ReceiptAsk.channel` → 卡片创建时按通道把 `answerers` **快照**进 `LoopCard`；`by` 改由服务端会话 `user.email` 注入（客户端不可伪造）；内核 `card.answer` 拒绝名单外身份且**不产事实**；HTTP 层映射 `403 FORBIDDEN`。挂起零消耗语义不变。
+  - **前端 · 插件页**：停用/启用 `.icon-btn` + 「登记插件」表单（Agent/Source/Channel/Delivery，Channel 的 `answerers` 逗号分隔），写后统一 `revalidateLoop()`。
+  - **前端 · why 溯源**：`RunWhyModal` 用 `/loop/runs/:id/why` 拉 `{run,timeline}`，按 seq 升序复用事实日志时间线视觉；总览 Recent Runs 增「溯源」入口。
+  - **前端 · 规则预演**：`RulePreview` 调 `emit`（只读演算、不写事实日志）与 `checkRule`（合法/非法/重名草稿校验），界面明确「不落库」。
+  - 数据流仍严格单向：交互 → 写事实 → 统一失效 → SWR 各自重渲染，无渲染函数互调环（§2.4 架构红线）。
+- **2026-11-12 联调修复（healthz 版本漂移）**：重启 M4 服务后发现 `/loop/healthz` 仍报 `autoloop-web-0.3.0`——`getHealthz()` 把版本**硬编码成字面量**，M4 bump 时漏改。修复为引用 `LOOP_KERNEL_VERSION` 单一事实源；REST 冒烟仅断言 `status:'ok'`，故不影响既有断言。重启后探针正确返回 `0.4.0`。此后版本号一律以常量引用为唯一写法，杜绝散落。
+- **2026-11-12 M4 验收（全绿）**：
+
+| 验证项 | 命令 | 结果 |
+|---|---|---|
+| 确定性内核（含 ⑭ 插件启停 / ⑮ 通道级应答身份） | `npm run test:loop-kernel` | 91 / 0 |
+| `/loop/*` REST 全链路（含启停、越权 403、why/emit） | `npm run test:loop-api` | 61 / 0 |
+| 现有接口零回归 | `npm run test:api` | 34 / 0 |
+| 并发首访播种幂等（真实服务） | `npm run test:loop-concurrency` | 30 / 0 |
+| M3 审批卡片台全链路（零回归） | `npm run test:loop-approval` | 37 / 0 |
+| M4 专项全链路 e2e（启停/预演/越权/溯源/多租户隔离） | `npm run test:loop-m4` | 36 / 0 |
+| 四视口 375/768/1440/1920（含 M4 三块 UI 实操） | `npm run test:loop-ui` | 102 / 0 |
+| 后端 / 前端 TypeScript | `npm run typecheck:backend` / `npx tsc --noEmit` | 通过，无错误 |
+| 前端生产构建 | `cd frontend && npm run build` | 通过，11 页静态生成 |
+| 本地预览服务（M4 构建） | 3737 `server.mjs` | `/` 200 · healthz `autoloop-web-0.4.0` |
+| 目视核对 | 规则页 / 插件页 / 溯源 Modal 三张截图 | 白底绿系圆角卡片、复用原视觉，无溢出/黑块/错位 |
+
+  > **部署状态**：线上 3000 实例与外网链接（`https://a00b3c39736f37990.app.workbuddy.host/?sharecode=Q4ABTA5LR3`）仍为 M1 之前基线版；按分期，重新发布在 **M5** 执行，避免把半成品推到线上。M4 全部验证在本地 3737 预览服务完成。
+  > **提交状态**：M3 已提交（`04158c14`）；M4 代码已在本地全量验证，提交待用户确认凭证后执行。

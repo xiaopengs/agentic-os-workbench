@@ -22,10 +22,13 @@ export function RecentWorkflows({
   runs,
   loading,
   onRun,
+  onWhy,
 }: {
   runs: LoopRun[];
   loading: boolean;
   onRun: () => void;
+  /** M4：点击查看该轮次的 why 溯源时间线 */
+  onWhy: (runId: string) => void;
 }) {
   const rows = [...runs]
     .sort((a, b) => b.seq - a.seq)
@@ -93,6 +96,16 @@ export function RecentWorkflows({
                     <i style={{ width: `${run.state === 'done' ? 100 : run.state === 'claimed' ? 60 : 25}%` }} />
                   </div>
                   <span className="wf-dur">{run.finishedAt ? relTime(run.finishedAt) : `hops ${run.hops}`}</span>
+                  <button
+                    className="mini-more"
+                    onClick={() => onWhy(run.id)}
+                    aria-label={`溯源轮次 ${run.id}`}
+                    title="查看 why 溯源时间线"
+                    style={{ marginLeft: 'auto', width: 'auto', padding: '0 6px', gap: 4, fontSize: 11.5 }}
+                  >
+                    <Icon name="i-list" size={12} />
+                    溯源
+                  </button>
                 </div>
               </div>
             );

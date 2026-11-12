@@ -7,8 +7,8 @@
 import { request } from './api-client';
 import { emitToast } from './toast-bus';
 import type {
-  Fact, LoopCard, LoopEmitResp, LoopEvent, LoopPlugin, LoopPostEventResp, LoopRule,
-  LoopRuleCheckResp, LoopRunResultResp, LoopRunsResp, LoopState, LoopWhyResp,
+  Fact, LoopCard, LoopEmitResp, LoopEvent, LoopPlugin, LoopPluginToggleResp, LoopPostEventResp,
+  LoopRule, LoopRuleCheckResp, LoopRunResultResp, LoopRunsResp, LoopState, LoopWhyResp,
 } from './loop-types';
 
 /** 外壳注入的固定 now 仅用于演示复现；正常留空由服务端取真实时间 */
@@ -82,6 +82,16 @@ export const loopApi = {
   tick: () => request<{ fired: number; newRuns: number; facts: number[] }>('/loop/tick', { method: 'POST', body: {} }),
   postPlugin: (plugin: LoopPlugin) =>
     request<{ plugin: LoopPlugin; facts: number[] }>('/loop/plugins', { method: 'POST', body: plugin }),
+  disablePlugin: (id: string, reason?: string) =>
+    request<LoopPluginToggleResp>(
+      `/loop/plugins/${encodeURIComponent(id)}/disable`,
+      { method: 'POST', body: reason ? { reason } : {} },
+    ),
+  enablePlugin: (id: string) =>
+    request<LoopPluginToggleResp>(
+      `/loop/plugins/${encodeURIComponent(id)}/enable`,
+      { method: 'POST', body: {} },
+    ),
 };
 
 /** 统一写后提示（保持与旧 workflow 创建一致的 toast 反馈） */

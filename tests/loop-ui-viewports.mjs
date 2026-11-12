@@ -1,11 +1,14 @@
 /**
- * M2 前端接线 · 四视口 UI 验证
+ * M2/M3/M4 前端接线 · 四视口 UI 验证
  *
  * 覆盖 375 / 768 / 1440 / 1920 四种视口 × 4 个页面（总览 / 规则 / 插件 / 设置）：
  *   ① 横向溢出 = 0（document.scrollWidth ≤ innerWidth）
  *   ② 超大图标 = 0（svg.ic 回落成 300×150 黑块的典型 bug）
  *   ③ 页面运行时错误 = 0（pageerror + console.error，排除资源 401/404）
  *   ④ 总览展示真实内核数据（KPI 数值来自 /loop/state、事实日志、最近轮次）
+ *   ⑤ M3 审批台：各视口卡片 + 选项按钮触控区 + 拍板续跑实操
+ *   ⑥ M4 新 UI：规则页预演面板 / 插件页启停按钮各视口存在且不溢出；
+ *      1440 视口实操「溯源 Modal / emit 预演 / 插件停用启用」
  *
  * 用法：node tests/loop-ui-viewports.mjs [baseURL]
  *   默认 http://127.0.0.1:3737
@@ -155,6 +158,46 @@ try {
           `opt=${approval.optCount} minH=${approval.minOptHeight}`);
         check(`${tag} 审批台不溢出视口`, approval.withinViewport === true);
       }
+
+      // M4 规则页：预演面板存在 + 表单 + 按钮触控区达标、不溢出
+      if (p.path === '/workflows') {
+        const preview = await page.evaluate(() => {
+          const cards = [...document.querySelectorAll('.card')];
+          const root = cards.find((c) => (c.textContent || '').includes('规则预演'));
+          if (!root) return { exists: false };
+          const form = root.querySelector('form.wf-form');
+          const btns = [...root.querySelectorAll('button')];
+          return {
+            exists: true,
+            hasForm: !!form,
+            btnCount: btns.length,
+            minBtnHeight: btns.length ? Math.min(...btns.map((b) => b.getBoundingClientRect().height)) : 0,
+            withinViewport: root.getBoundingClientRect().right <= window.innerWidth + 2,
+          };
+        });
+        check(`${tag} 规则预演面板存在且含表单`, preview.exists && preview.hasForm,
+          `exists=${preview.exists} form=${preview.hasForm}`);
+        check(`${tag} 规则预演按钮 ≥2 且触控区 ≥36px`,
+          preview.btnCount >= 2 && preview.minBtnHeight >= 36,
+          `btn=${preview.btnCount} minH=${preview.minBtnHeight}`);
+        check(`${tag} 规则预演面板不溢出视口`, preview.withinViewport === true);
+      }
+
+      // M4 插件页：注册表 +「登记插件」按钮 + 启停按钮，各视口存在且不溢出
+      if (p.path === '/skills') {
+        const plugins = await page.evaluate(() => {
+          const text = document.body.innerText;
+          const regBtn = [...document.querySelectorAll('button')].some((b) => (b.textContent || '').includes('登记插件'));
+          const toggleBtns = [...document.querySelectorAll('.icon-btn')].filter((b) =>
+            /停用|启用/.test(b.getAttribute('aria-label') || b.getAttribute('title') || ''));
+          const rows = document.querySelectorAll('.tbl tbody tr').length;
+          return { hasRegBtn: regBtn, toggleCount: toggleBtns.length, rows, hasTable: text.includes('插件注册表') };
+        });
+        check(`${tag} 插件页含注册表与登记按钮`, plugins.hasTable && plugins.hasRegBtn,
+          `table=${plugins.hasTable} regBtn=${plugins.hasRegBtn}`);
+        check(`${tag} 插件页启停按钮 ≥1（4 条规则下至少 7 插件）`, plugins.toggleCount >= 1,
+          `toggle=${plugins.toggleCount} rows=${plugins.rows}`);
+      }
     }
   }
 
@@ -211,6 +254,65 @@ try {
   check('M3 拍板后「待拍板」状态归零', afterAnswer.openBadges === 0,
     `running-badges=${afterAnswer.openBadges}`);
   check('M3 事实日志出现「卡片回答」', afterAnswer.factLogHasAnswer);
+
+  /* ── M4 实操 A：总览「溯源」按钮 → Modal 事实时间线（1440 视口）── */
+  await page.goto(`${BASE}/`, { waitUntil: 'domcontentloaded' });
+  await page.waitForTimeout(1000);
+  const whyBtn = page.locator('button[aria-label^="溯源轮次"]').first();
+  const whyBtnCount = await whyBtn.count();
+  check('M4 总览 Recent Runs 有「溯源」按钮', whyBtnCount >= 1, `count=${whyBtnCount}`);
+  if (whyBtnCount) {
+    await whyBtn.click();
+    await page.waitForTimeout(900);
+    const modal = await page.evaluate(() => {
+      const box = document.querySelector('.modal-box');
+      if (!box) return { open: false };
+      return {
+        open: true,
+        hasTitle: (box.textContent || '').includes('溯源'),
+        timelineRows: box.querySelectorAll('.trace-row').length,
+        withinViewport: box.getBoundingClientRect().right <= window.innerWidth + 2,
+      };
+    });
+    check('M4 点溯源打开 Modal 且含事实时间线（≥1 行）',
+      modal.open && modal.hasTitle && modal.timelineRows >= 1,
+      `open=${modal.open} rows=${modal.timelineRows}`);
+    check('M4 溯源 Modal 不溢出视口', modal.withinViewport === true);
+    // 关闭
+    const closeBtn = page.locator('.modal-close').first();
+    if (await closeBtn.count()) await closeBtn.click();
+    await page.waitForTimeout(300);
+  }
+
+  /* ── M4 实操 B：规则页 emit 预演 → 命中结果 chip（1440 视口）── */
+  await page.goto(`${BASE}/workflows`, { waitUntil: 'domcontentloaded' });
+  await page.waitForTimeout(700);
+  const previewSubmit = page.locator('button', { hasText: '预演这条事件' }).first();
+  check('M4 规则页预演按钮存在', (await previewSubmit.count()) >= 1);
+  if (await previewSubmit.count()) {
+    await previewSubmit.click();
+    await page.waitForTimeout(800);
+    const emitResult = await page.evaluate(() => document.body.innerText.includes('命中') && /命中\s*\d+\s*条规则/.test(document.body.innerText));
+    check('M4 emit 预演展示命中规则结果', emitResult);
+  }
+
+  /* ── M4 实操 C：插件页停用 → 已停用 chip → 启用恢复（1440 视口）── */
+  await page.goto(`${BASE}/skills`, { waitUntil: 'domcontentloaded' });
+  await page.waitForTimeout(700);
+  const disableBtn = page.locator('button[aria-label^="停用插件"]').first();
+  check('M4 插件页存在可停用按钮', (await disableBtn.count()) >= 1);
+  if (await disableBtn.count()) {
+    await disableBtn.click();
+    await page.waitForTimeout(1000);
+    const disabledChip = await page.evaluate(() => document.body.innerText.includes('已停用'));
+    check('M4 停用后展示「已停用」状态', disabledChip);
+    const enableBtn = page.locator('button[aria-label^="启用插件"]').first();
+    check('M4 停用后出现「启用」按钮', (await enableBtn.count()) >= 1);
+    if (await enableBtn.count()) {
+      await enableBtn.click();
+      await page.waitForTimeout(1000);
+    }
+  }
 
   await ctx.close();
 } finally {

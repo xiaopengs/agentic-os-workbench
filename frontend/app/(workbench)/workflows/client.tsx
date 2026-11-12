@@ -4,6 +4,7 @@ import { useSearchParams } from 'next/navigation';
 import { useState } from 'react';
 import { Icon } from '@/components/icons/Icon';
 import { WorkflowFormModal } from '@/components/modals/WorkflowFormModal';
+import { RulePreview } from '@/components/dashboard/RulePreview';
 import { Chip } from '@/components/ui/WorkflowBits';
 import { LoadingRows, PageHeader } from '@/components/ui/PageHeader';
 import { loopApi, loopToast } from '@/lib/loop-api';
@@ -86,6 +87,8 @@ export default function WorkflowsClient() {
           </button>
         }
       />
+
+      <RulePreview rules={rules} />
 
       <div className="card">
         <div className="card-head">

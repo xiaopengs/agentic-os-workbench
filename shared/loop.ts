@@ -168,6 +168,9 @@ export interface LoopCard {
   key?: string;
   createdAt: string;
   run?: string;
+  /** M4：送达通道及其应答者白名单快照（创建时固化，重放确定；空名单=登录本人可答） */
+  channel?: string;
+  answerers?: string[];
 }
 
 /* ── 回执 ───────────────────────────────────────────────────── */
@@ -181,6 +184,8 @@ export interface ReceiptAsk {
   recommend?: number;
   about?: string;
   key?: string;
+  /** M4：指定送达通道；内核把该通道的 answerers 名单快照进卡片，做通道级应答身份校验 */
+  channel?: string;
 }
 export interface ReceiptNotice {
   title: string;
@@ -211,7 +216,7 @@ export interface LoopReceipt {
 /* ── 事实日志（只追加，内核唯一写入物）──────────────────────── */
 export type FactKind =
   | 'event.accepted' | 'hop.blocked'
-  | 'rule.upserted' | 'rule.paused' | 'rule.resumed' | 'rules.reloaded' | 'plugin.upserted' | 'cron.fired'
+  | 'rule.upserted' | 'rule.paused' | 'rule.resumed' | 'rules.reloaded' | 'plugin.upserted' | 'plugin.disabled' | 'plugin.enabled' | 'cron.fired'
   | 'run.queued' | 'run.claimed' | 'run.finished' | 'run.cancelled' | 'manual.run'
   | 'card.created' | 'card.answered' | 'card.closed'
   | 'timer.scheduled' | 'timer.fired' | 'timer.cancelled';
@@ -266,6 +271,8 @@ export interface PluginUpsertedFact extends FactBase {
   kind: 'plugin.upserted';
   plugin: LoopPlugin;
 }
+export interface PluginDisabledFact extends FactBase { kind: 'plugin.disabled'; id: string; reason?: string }
+export interface PluginEnabledFact extends FactBase { kind: 'plugin.enabled'; id: string }
 /* 每种 kind 单独定义，保证 Extract<Fact,{kind:'X'}> 能精确收窄（合并 kind 会退化成 never） */
 export interface RulePausedFact extends FactBase { kind: 'rule.paused'; name: string; reason?: string }
 export interface RuleResumedFact extends FactBase { kind: 'rule.resumed'; name: string }
@@ -284,7 +291,7 @@ export interface TimerFiredFact extends FactBase { kind: 'timer.fired'; key: str
 export interface TimerCancelledFact extends FactBase { kind: 'timer.cancelled'; key: string }
 export type Fact =
   | EventAcceptedFact | HopBlockedFact | RuleUpsertedFact | RunQueuedFact | RunFinishedFact
-  | CardCreatedFact | CardAnsweredFact | PluginUpsertedFact
+  | CardCreatedFact | CardAnsweredFact | PluginUpsertedFact | PluginDisabledFact | PluginEnabledFact
   | RulePausedFact | RuleResumedFact | RulesReloadedFact | CronFiredFact
   | RunClaimedFact | RunCancelledFact | ManualRunFact | CardClosedFact
   | TimerScheduledFact | TimerFiredFact | TimerCancelledFact;
@@ -293,6 +300,8 @@ export type Fact =
 export type LoopInput =
   | { kind: 'event'; event: LoopEvent }
   | { kind: 'plugin.upsert'; plugin: LoopPlugin }
+  | { kind: 'plugin.disable'; id: string; reason?: string }
+  | { kind: 'plugin.enable'; id: string }
   | { kind: 'rule.upsert'; rule: LoopRule }
   | { kind: 'rule.pause'; name: string; reason?: string }
   | { kind: 'rule.resume'; name: string }
@@ -332,6 +341,8 @@ export interface LoopView {
   lanes: Record<string, LoopLane>;
   timers: LoopTimer[];
   pauses: Record<string, { since: string; reason?: string }>;
+  /** M4：已停用插件 id → 停用信息；停用后不派活（对称 rule.pause 的 pauses） */
+  disabledPlugins: Record<string, { since: string; reason?: string }>;
   /** 已确认的累计用量（幂等重放不重复计） */
   usage: { runs: number; tokens: number; costCents: number };
   /** 回执内容指纹：`${runId}` → receipt JSON，用于幂等重交判定 */
@@ -371,6 +382,7 @@ export interface LoopState {
   cards: LoopCard[];
   timers: LoopTimer[];
   pauses: LoopView['pauses'];
+  disabledPlugins: LoopView['disabledPlugins'];
   usage: LoopView['usage'];
 }
 
@@ -395,7 +407,9 @@ export const LOOP_API = {
   CARD_RESOLVE: (id: string) => `/loop/cards/${encodeURIComponent(id)}/resolve`,
   FACTS: '/loop/facts',
   TICK: '/loop/tick',
+  PLUGIN_DISABLE: (id: string) => `/loop/plugins/${encodeURIComponent(id)}/disable`,
+  PLUGIN_ENABLE: (id: string) => `/loop/plugins/${encodeURIComponent(id)}/enable`,
 } as const;
 
 /** 内核版本：参与事实日志格式指纹，变更时触发投影重建 */
-export const LOOP_KERNEL_VERSION = 'autoloop-web-0.3.0';
+export const LOOP_KERNEL_VERSION = 'autoloop-web-0.4.0';

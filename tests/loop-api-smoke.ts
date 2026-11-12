@@ -233,6 +233,110 @@ async function main(): Promise<void> {
     Array.isArray(cs.body?.data?.rules) && cs.body.data.rules.length === 4,
     `首次 rules=${cs.body?.data?.rules?.length}`);
 
+  /* 17. M4 插件启停端点（事实化 / 幂等 / 停用后预演不派活） */
+  const dis1 = await call('POST', '/loop/plugins/github/disable', { reason: '维护中' }, auth);
+  check('POST /loop/plugins/:id/disable → 200', dis1.status === 200 && dis1.body?.data?.disabled === true,
+    `实际 ${dis1.status}`);
+  const sDis = await call('GET', '/loop/state', undefined, auth);
+  check('停用后 state.disabledPlugins 含 github', !!sDis.body?.data?.disabledPlugins?.github);
+  const preDis = await call('POST', '/loop/emit', {
+    id: 'm4-emit-dis', source: 'github', type: 'issues.opened',
+  }, auth);
+  check('停用 Source 后预演 matched 为空', Array.isArray(preDis.body?.data?.matched) && preDis.body.data.matched.length === 0,
+    JSON.stringify(preDis.body?.data?.matched));
+  const dis2 = await call('POST', '/loop/plugins/github/disable', {}, auth);
+  check('重复停用 → 404（幂等，不产事实）', dis2.status === 404, `实际 ${dis2.status}`);
+  const disNo = await call('POST', '/loop/plugins/no_such/disable', {}, auth);
+  check('停用不存在插件 → 404', disNo.status === 404, `实际 ${disNo.status}`);
+  const en1 = await call('POST', '/loop/plugins/github/enable', {}, auth);
+  check('POST /loop/plugins/:id/enable → 200', en1.status === 200 && en1.body?.data?.disabled === false,
+    `实际 ${en1.status}`);
+  const sEn = await call('GET', '/loop/state', undefined, auth);
+  check('启用后 state.disabledPlugins 移除 github', !sEn.body?.data?.disabledPlugins?.github);
+  const preEn = await call('POST', '/loop/emit', {
+    id: 'm4-emit-en', source: 'github', type: 'issues.opened',
+  }, auth);
+  check('启用后预演恢复命中', Array.isArray(preEn.body?.data?.matched) && preEn.body.data.matched.length > 0,
+    JSON.stringify(preEn.body?.data?.matched));
+  const en2 = await call('POST', '/loop/plugins/github/enable', {}, auth);
+  check('重复启用 → 404（幂等）', en2.status === 404, `实际 ${en2.status}`);
+
+  /* 18. M4 通道级应答身份校验（越权 403 / 名单内 200 / M3 无名单零回归） */
+  // 造一张带 channel=feishu（种子 answerers=['ou_owner']）的受限卡片
+  const m4ev = await call('POST', '/loop/events', {
+    id: 'm4-restricted-ev', source: 'github', type: 'issues.opened', subject: 'repo#88',
+  }, auth);
+  check('受限卡片：接入事件 201', m4ev.status === 201, `实际 ${m4ev.status}`);
+  const m4runs = await call('GET', '/loop/runs', undefined, auth);
+  const m4run = (m4runs.body?.data?.runs ?? []).find((r: any) =>
+    r.eventSeqs?.includes(m4ev.body?.data?.event));
+  const m4res = await call('POST', `/loop/runs/${m4run?.id}/result`, {
+    outcome: 'done', summary: '请求拍板（受限通道）',
+    ask: [{ title: '是否合并？', text: '需 feishu 应答者确认', options: ['合并', '暂缓'], channel: 'feishu' }],
+  }, auth);
+  check('受限卡片：交回执产卡片', m4res.status === 201 && (m4res.body?.data?.cards?.length ?? 0) > 0,
+    `实际 ${m4res.status}`);
+  const m4cardId = m4res.body?.data?.cards?.[0];
+  const m4cards = await call('GET', '/loop/cards', undefined, auth);
+  const m4card = (m4cards.body?.data ?? []).find((c: any) => c.id === m4cardId);
+  check('受限卡片快照 answerers 与 channel', m4card?.channel === 'feishu' && m4card?.answerers?.includes('ou_owner'),
+    JSON.stringify({ channel: m4card?.channel, answerers: m4card?.answerers }));
+  const deny = await call('POST', `/loop/cards/${m4cardId}/answer`, { choice: 0 }, auth);
+  check('越权：会话 email 不在名单 → 403', deny.status === 403, `实际 ${deny.status}`);
+  check('越权：返回 FORBIDDEN 错误码', deny.body?.error?.code === 'FORBIDDEN', JSON.stringify(deny.body?.error));
+  const afterDeny = await call('GET', '/loop/cards', undefined, auth);
+  const afterDenyCard = (afterDeny.body?.data ?? []).find((c: any) => c.id === m4cardId);
+  check('越权不改变卡片状态（仍 open）', afterDenyCard?.state === 'open', `state=${afterDenyCard?.state}`);
+  // 把当前会话 email 加进 feishu 通道白名单（登记同名 channel 覆盖），再回答 → 200
+  await call('POST', '/loop/plugins', {
+    kind: 'channel', id: 'feishu', name: '飞书', answerers: ['ou_owner', email],
+  }, auth);
+  // 卡片白名单是创建时快照，改通道不影响既有卡片；再建一张新卡片验证名单内放行
+  const m4ev2 = await call('POST', '/loop/events', {
+    id: 'm4-allowed-ev', source: 'shop', type: 'site.check', subject: 'home',
+  }, auth);
+  const m4runs2 = await call('GET', '/loop/runs', undefined, auth);
+  const m4run2 = (m4runs2.body?.data?.runs ?? []).find((r: any) =>
+    r.eventSeqs?.includes(m4ev2.body?.data?.event));
+  const m4res2 = await call('POST', `/loop/runs/${m4run2?.id}/result`, {
+    outcome: 'done', ask: [{ title: '确认巡检结果？', options: ['通过', '复检'], channel: 'feishu' }],
+  }, auth);
+  const m4card2Id = m4res2.body?.data?.cards?.[0];
+  const allow = await call('POST', `/loop/cards/${m4card2Id}/answer`, { choice: 0 }, auth);
+  check('名单内：会话 email 在白名单 → 200', allow.status === 200, `实际 ${allow.status}`);
+  check('名单内：回答触发续跑（resumedRun 非空）', !!allow.body?.data?.resumedRun,
+    `resumedRun=${allow.body?.data?.resumedRun}`);
+  // 未带 channel 的卡片（M3 演示路径）→ 无名单 → 任何登录本人可答
+  const m4ev3 = await call('POST', '/loop/events', {
+    id: 'm4-free-ev', source: 'shop', type: 'alert.cpu', subject: 'svc',
+  }, auth);
+  const m4runs3 = await call('GET', '/loop/runs', undefined, auth);
+  const m4run3 = (m4runs3.body?.data?.runs ?? []).find((r: any) =>
+    r.eventSeqs?.includes(m4ev3.body?.data?.event));
+  const m4res3 = await call('POST', `/loop/runs/${m4run3?.id}/result`, {
+    outcome: 'done', ask: [{ title: '是否处理告警？', options: ['处理', '忽略'] }],
+  }, auth);
+  const m4card3Id = m4res3.body?.data?.cards?.[0];
+  const freeAns = await call('POST', `/loop/cards/${m4card3Id}/answer`, { choice: 0 }, auth);
+  check('无名单卡片登录本人可答（M3 零回归）→ 200', freeAns.status === 200, `实际 ${freeAns.status}`);
+
+  /* 19. M4 why 溯源 / emit 预演端点契约（check 契约已由第 10 段覆盖） */
+  const why = await call('GET', `/loop/runs/${m4run?.id}/why`, undefined, auth);
+  check('GET /loop/runs/:id/why → { run, timeline }',
+    why.status === 200 && why.body?.data?.run === m4run?.id && Array.isArray(why.body?.data?.timeline)
+    && why.body.data.timeline.length > 0,
+    `status=${why.status} timeline=${why.body?.data?.timeline?.length}`);
+  const whyBad = await call('GET', '/loop/runs/no_such_run/why', undefined, auth);
+  check('why 不存在的轮次 → 404', whyBad.status === 404, `实际 ${whyBad.status}`);
+  const seqBefore = (await call('GET', '/loop/state', undefined, auth)).body?.data?.seq;
+  const emitDry = await call('POST', '/loop/emit', {
+    id: 'm4-dry', source: 'github', type: 'issues.opened',
+  }, auth);
+  const seqAfter = (await call('GET', '/loop/state', undefined, auth)).body?.data?.seq;
+  check('emit 预演 → 200 且 matched 非空', emitDry.status === 200 && (emitDry.body?.data?.matched?.length ?? 0) > 0,
+    JSON.stringify(emitDry.body?.data));
+  check('emit 预演不落库（seq 不变）', seqBefore === seqAfter, `${seqBefore} → ${seqAfter}`);
+
   console.log(`\n========================================================`);
   console.log(`结果：${passed} 通过 / ${failed} 失败`);
   console.log(`========================================================`);

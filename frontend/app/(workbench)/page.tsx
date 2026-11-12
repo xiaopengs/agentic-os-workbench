@@ -7,6 +7,7 @@ import { LiveTrace } from '@/components/dashboard/LiveTrace';
 import { RecentWorkflows } from '@/components/dashboard/RecentWorkflows';
 import { ApprovalCards } from '@/components/dashboard/ApprovalCards';
 import { WorkflowFormModal } from '@/components/modals/WorkflowFormModal';
+import { RunWhyModal } from '@/components/modals/RunWhyModal';
 import { Icon, type IconName } from '@/components/icons/Icon';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { useLoopWorkbench } from '@/lib/loop-hooks';
@@ -33,6 +34,7 @@ interface AttentionItem {
 export default function OverviewPage() {
   const { state, totals, facts, loading, sync } = useLoopWorkbench();
   const [open, setOpen] = useState(false);
+  const [whyRun, setWhyRun] = useState<string | null>(null);
 
   const openCards = state?.cards.filter((c) => c.state === 'open').length ?? 0;
 
@@ -110,9 +112,11 @@ export default function OverviewPage() {
         runs={state?.runs ?? []}
         loading={loading}
         onRun={() => setOpen(true)}
+        onWhy={setWhyRun}
       />
 
       <WorkflowFormModal open={open} onClose={() => setOpen(false)} />
+      <RunWhyModal runId={whyRun} onClose={() => setWhyRun(null)} />
     </>
   );
 }

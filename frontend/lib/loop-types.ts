@@ -127,12 +127,16 @@ export interface LoopCard {
   key?: string;
   createdAt: string;
   run?: string;
+  /** M4：送达通道与应答者白名单快照（空名单=登录本人可答） */
+  channel?: string;
+  answerers?: string[];
 }
 
 /* ── 事实日志（事件溯源）──────────────────────────────────── */
 export type FactKind =
   | 'event.accepted' | 'hop.blocked'
-  | 'rule.upserted' | 'rule.paused' | 'rule.resumed' | 'rules.reloaded' | 'plugin.upserted' | 'cron.fired'
+  | 'rule.upserted' | 'rule.paused' | 'rule.resumed' | 'rules.reloaded'
+  | 'plugin.upserted' | 'plugin.disabled' | 'plugin.enabled' | 'cron.fired'
   | 'run.queued' | 'run.claimed' | 'run.finished' | 'run.cancelled' | 'manual.run'
   | 'card.created' | 'card.answered' | 'card.closed'
   | 'timer.scheduled' | 'timer.fired' | 'timer.cancelled';
@@ -205,6 +209,8 @@ export interface LoopState {
   cards: LoopCard[];
   timers: Array<{ key: string; lane: string; rule: string; at: string; about?: string; fired?: boolean }>;
   pauses: Record<string, { since: string; reason?: string }>;
+  /** M4：已停用插件 id → 停用信息 */
+  disabledPlugins: Record<string, { since: string; reason?: string }>;
   usage: { runs: number; tokens: number; costCents: number };
 }
 
@@ -226,6 +232,12 @@ export interface LoopEmitResp {
   matched: string[];
 }
 export interface LoopRuleCheckResp { valid: boolean; issues: string[] }
+/** M4 插件启停响应 */
+export interface LoopPluginToggleResp {
+  disabled: boolean;
+  id: string;
+  facts: number[];
+}
 export interface LoopRunResultResp {
   duplicate: boolean;
   cards: string[];

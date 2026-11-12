@@ -91,6 +91,8 @@ route('POST', '/loop/cards/:id/answer', loop.postCardAnswer);
 route('POST', '/loop/cards/:id/resolve', loop.postCardResolve);
 route('POST', '/loop/tick', loop.postTick);
 route('POST', '/loop/plugins', loop.postPlugin);
+route('POST', '/loop/plugins/:id/disable', loop.postPluginDisable);
+route('POST', '/loop/plugins/:id/enable', loop.postPluginEnable);
 
 /* ── 健康检查 ───────────────────────────────────────────────── */
 route('GET', '/health', async () =>

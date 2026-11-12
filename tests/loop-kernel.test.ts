@@ -297,6 +297,105 @@ section('⑬ 事件溯源完备性（重放还原全部视图字段）');
 }
 
 /* ══════════════════════════════════════════════════════════ */
+section('⑭ M4 插件启停（事实化 / 停用后不派活 / 重放一致）');
+{
+  let v = seeded();
+  // 停用 github 源：来自 github 的事件不再命中任何规则
+  const ev = { id: 'm4-dis-1', source: 'github', type: 'issues.opened', subject: 'repo#1' };
+  check('停用前 github 事件命中「跟进 GitHub Issue」',
+    matchRules(v, ev as any).some((r) => r.name === '跟进 GitHub Issue'));
+
+  const d1 = step(v, { kind: 'plugin.disable', id: 'github', reason: '维护中' }, T1);
+  v = d1.view;
+  check('停用产 plugin.disabled 事实', kindsOf(d1.facts, 'plugin.disabled') === 1);
+  check('投影记录 disabledPlugins.github', !!v.disabledPlugins.github);
+  check('停用 Source 后同事件不再派活', matchRules(v, ev as any).length === 0);
+  check('停用后 stateOf 输出 disabledPlugins', !!stateOf(v, T1).disabledPlugins.github);
+
+  // 幂等：重复停用不产事实
+  const d2 = step(v, { kind: 'plugin.disable', id: 'github' }, T1);
+  check('重复停用不产事实（幂等）', d2.facts.length === 0);
+  v = d2.view;
+
+  // 不存在的插件停用 → 无事实
+  const d3 = step(v, { kind: 'plugin.disable', id: 'no_such_plugin' }, T1);
+  check('停用不存在的插件不产事实', d3.facts.length === 0);
+
+  // 停用 Agent 后指向它的规则不派活
+  const d4 = step(v, { kind: 'plugin.disable', id: 'codex' }, T1);
+  v = d4.view;
+  check('停用 Agent 后 shop 告警不再派给 codex',
+    matchRules(v, { id: 'm4-dis-2', source: 'shop', type: 'alert.cpu', subject: 'svc' } as any)
+      .every((r) => r.to !== 'codex'));
+
+  // 启用恢复
+  const e1 = step(v, { kind: 'plugin.enable', id: 'github' }, T2);
+  v = e1.view;
+  check('启用产 plugin.enabled 事实', kindsOf(e1.facts, 'plugin.enabled') === 1);
+  check('启用后投影移除 github', !v.disabledPlugins.github);
+  check('启用后事件恢复派活', matchRules(v, ev as any).some((r) => r.name === '跟进 GitHub Issue'));
+  const e2 = step(v, { kind: 'plugin.enable', id: 'github' }, T2);
+  check('重复启用不产事实（幂等）', e2.facts.length === 0);
+
+  // 重放一致性：把启停事实并入日志重放，投影须一致
+  const seedFacts: Fact[] = [];
+  let sv = emptyView();
+  for (const input of seedInputs()) { const r = step(sv, input, T0); sv = r.view; seedFacts.push(...r.facts); }
+  const rebuilt = replay([...seedFacts, ...d1.facts, ...d4.facts, ...e1.facts]);
+  check('重放还原停用状态（github 已启用、codex 仍停用）',
+    !rebuilt.disabledPlugins.github && !!rebuilt.disabledPlugins.codex);
+}
+
+/* ══════════════════════════════════════════════════════════ */
+section('⑮ M4 通道级应答身份校验（内核判定 / 名单快照 / 挂起语义不变）');
+{
+  let v = seeded();
+  // 造一轮 github 事件派活
+  const r1 = step(v, { kind: 'event', event: { id: 'm4-ask-1', source: 'github', type: 'issues.opened', subject: 'repo#77' } }, T1);
+  v = r1.view;
+  const runId = Object.values(v.runs)[0]?.id ?? '';
+
+  // ① 回执带 channel=feishu（种子 feishu.answerers=['ou_owner']）→ 卡片快照白名单
+  const r2 = step(v, { kind: 'run.result', id: runId, receipt: {
+    outcome: 'done', summary: '请求拍板',
+    ask: [{ title: '是否合并？', text: '等待确认', options: ['合并', '暂缓'], channel: 'feishu' }],
+  } }, T1);
+  v = r2.view;
+  const card = Object.values(v.cards)[0];
+  check('带 channel 的卡片快照 answerers 白名单',
+    !!card && Array.isArray(card.answerers) && card.answerers.includes('ou_owner'));
+  check('带 channel 的卡片记录 channel', card?.channel === 'feishu');
+
+  // ② 名单外身份回答 → 内核拒绝（不产任何事实），卡片仍 open
+  const bad = step(v, { kind: 'card.answer', id: card!.id, choice: 0, by: 'intruder@x.local' }, T2);
+  check('名单外 by 被内核拒绝（零事实）', bad.facts.length === 0);
+  check('名单外回答不改变卡片状态', bad.view.cards[card!.id].state === 'open');
+
+  // ③ 名单内身份回答 → 产 card.answered + 续跑（挂起→恢复），且 by 落事实
+  const good = step(v, { kind: 'card.answer', id: card!.id, choice: 0, by: 'ou_owner' }, T2);
+  v = good.view;
+  check('名单内 by 通过校验', kindsOf(good.facts, 'card.answered') === 1);
+  check('名单内回答后卡片 decided', v.cards[card!.id].state === 'decided');
+  check('名单内回答沿用续跑语义（产 run.queued）', kindsOf(good.facts, 'run.queued') === 1);
+  const answered = good.facts.find((f) => f.kind === 'card.answered') as Extract<Fact, { kind: 'card.answered' }>;
+  check('by 写入事实（可溯源）', answered.by === 'ou_owner');
+
+  // ④ 未指定 channel 的卡片（M3 演示路径）→ answerers 空 → 登录本人可答（零回归）
+  let v2 = seeded();
+  const a1 = step(v2, { kind: 'event', event: { id: 'm4-ask-2', source: 'shop', type: 'alert.cpu', subject: 'svc' } }, T1);
+  v2 = a1.view;
+  const run2 = Object.values(v2.runs)[0]?.id ?? '';
+  const a2 = step(v2, { kind: 'run.result', id: run2, receipt: {
+    outcome: 'done', ask: [{ title: '确认？', options: ['是', '否'] }],
+  } }, T1);
+  v2 = a2.view;
+  const card2 = Object.values(v2.cards)[0];
+  check('未带 channel 的卡片 answerers 为空', !card2?.answerers?.length);
+  const ownerAns = step(v2, { kind: 'card.answer', id: card2!.id, choice: 0, by: 'anyone@workbench.local' }, T2);
+  check('无名单卡片登录本人可答（M3 零回归）', kindsOf(ownerAns.facts, 'card.answered') === 1);
+}
+
+/* ══════════════════════════════════════════════════════════ */
 console.log(`\n${'='.repeat(56)}`);
 console.log(`结果：\x1b[32m${pass} 通过\x1b[0m / \x1b[${fail ? 31 : 32}m${fail} 失败\x1b[0m`);
 console.log('='.repeat(56));

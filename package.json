@@ -11,6 +11,7 @@
     "test:loop": "npm run test:loop-kernel && npm run test:loop-api",
     "test:loop-concurrency": "node tests/loop-concurrency-e2e.mjs",
     "test:loop-approval": "node tests/loop-approval-e2e.mjs",
+    "test:loop-m4": "node tests/loop-m4-e2e.mjs",
     "test:loop-ui": "node tests/loop-ui-viewports.mjs",
     "test:e2e": "node tests/e2e.mjs",
     "build:deploy": "node scripts/build-deploy.mjs",

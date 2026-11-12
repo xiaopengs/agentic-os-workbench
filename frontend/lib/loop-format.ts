@@ -33,6 +33,8 @@ export const FACT_META: Record<FactKind, FactMeta> = {
   'rule.resumed': { label: '规则恢复', tone: 'Skill', icon: 'i-list' },
   'rules.reloaded': { label: '规则重载', tone: 'Skill', icon: 'i-refresh' },
   'plugin.upserted': { label: '插件登记', tone: 'Skill', icon: 'i-cube' },
+  'plugin.disabled': { label: '插件停用', tone: 'Skill', icon: 'i-cube' },
+  'plugin.enabled': { label: '插件启用', tone: 'Skill', icon: 'i-cube' },
   'cron.fired': { label: '定时触发', tone: 'Skill', icon: 'i-calendar' },
   'run.queued': { label: '轮次排队', tone: 'Tool', icon: 'i-play' },
   'run.claimed': { label: '轮次领取', tone: 'Tool', icon: 'i-wrench' },
@@ -65,7 +67,9 @@ export function factTitle(f: Fact): string {
     case 'rule.resumed':
       return f.name || '规则';
     case 'plugin.upserted':
-      return f.plugin?.name || '插件';
+    case 'plugin.disabled':
+    case 'plugin.enabled':
+      return f.plugin?.name || f.id || '插件';
     case 'cron.fired':
       return f.name || '定时任务';
     case 'timer.scheduled':
