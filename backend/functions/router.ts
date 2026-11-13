@@ -13,6 +13,9 @@
  *   GET                   /audit
  *   POST                  /ai/copilot   （SSE 流式，AI Gateway）
  *   GET                   /health
+ *   GET|POST              /decisions        （M6 架构决策面板）
+ *   GET|PATCH|DELETE      /decisions/:id
+ *   POST                  /decisions/:id/review  ·  GET /decisions/:id/score  ·  POST /decisions/:id/to-rule
  */
 import { corsHeaders, guard, notFound } from '../lib/resp';
 import { getHeader, methodOf, safeUrl, type ApiCtx } from '../lib/http';
@@ -26,6 +29,7 @@ import { getUsage } from './usage';
 import { listAudit } from './audit';
 import { postCopilot } from './copilot';
 import * as loop from './loop';
+import * as decisions from './decisions';
 
 export type Handler = (ctx: ApiCtx) => Promise<Response>;
 
@@ -93,6 +97,16 @@ route('POST', '/loop/tick', loop.postTick);
 route('POST', '/loop/plugins', loop.postPlugin);
 route('POST', '/loop/plugins/:id/disable', loop.postPluginDisable);
 route('POST', '/loop/plugins/:id/enable', loop.postPluginEnable);
+
+/* ── 架构设计决策面板 ADP（M6，独立 decision: 前缀，不侵入 loop 事实日志）── */
+route('GET', '/decisions', decisions.listDecisionsHandler);
+route('POST', '/decisions', decisions.createDecision);
+route('GET', '/decisions/:id', decisions.getDecision);
+route('PATCH', '/decisions/:id', decisions.updateDecision);
+route('DELETE', '/decisions/:id', decisions.deleteDecision);
+route('POST', '/decisions/:id/review', decisions.reviewDecision);
+route('GET', '/decisions/:id/score', decisions.scoreDecision);
+route('POST', '/decisions/:id/to-rule', decisions.decisionToRule);
 
 /* ── 健康检查 ───────────────────────────────────────────────── */
 route('GET', '/health', async () =>

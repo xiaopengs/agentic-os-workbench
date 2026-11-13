@@ -11,9 +11,12 @@
  *   device:{uid}:{did}        → Device   （架构文档未列，前端设备页需要，按同构范式补充）
  *   usage:{uid}:{yyyymm}      → UsageRecord
  *   audit:{uid}:{ts}:{id}     → AuditLog
+ *   decision:{uid}:d:{adrId}  → Decision  （M6 架构决策面板，独立前缀，不侵入 loop 事实日志）
+ *   decision:{uid}:meta       → { seeded }（M6 独立播种标记，前缀 d: 与之天然隔离）
  *
  * 提供 list / get / put / del，列表按前缀扫描。
  */
+import type { Decision } from '../../shared/decision';
 import type { Contract, Device, Skill, Trace, User, Workflow } from '../../shared/types';
 import { getDriver, type StoreDriver } from './store';
 import type { Env } from './env';
@@ -67,6 +70,12 @@ export const k = {
   device: (uid: string, did: string) => `device:${uid}:${did}`,
   usage: (uid: string, yyyymm: string) => `usage:${uid}:${yyyymm}`,
   audit: (uid: string, ts: string, id: string) => `audit:${uid}:${ts}:${id}`,
+  /** M6 决策实体（adrId 如 ADR-0001） */
+  decision: (uid: string, adrId: string) => `decision:${uid}:d:${adrId}`,
+  /** M6 决策列表前缀（只扫实体，不含 meta） */
+  decisionPrefix: (uid: string) => `decision:${uid}:d:`,
+  /** M6 独立播种标记 */
+  decisionMeta: (uid: string) => `decision:${uid}:meta`,
 } as const;
 
 /* ── 仓储 ───────────────────────────────────────────────────── */
@@ -121,6 +130,9 @@ export function listContracts(r: Repo, uid: string): Promise<Contract[]> {
 }
 export function listDevices(r: Repo, uid: string): Promise<Device[]> {
   return r.list<Device>(`device:${uid}:`);
+}
+export function listDecisions(r: Repo, uid: string): Promise<Decision[]> {
+  return r.list<Decision>(k.decisionPrefix(uid));
 }
 
 export function sortByCreatedAtDesc<T extends { createdAt?: string }>(items: T[]): T[] {

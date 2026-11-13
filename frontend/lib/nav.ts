@@ -14,15 +14,16 @@ export interface NavItem {
 }
 
 /**
- * 导航仍为 4 项，沿用 NAV_ITEMS 单一数据源与 navByKey（增删模块不索引错位）。
- * 路由与图标保持既有值不变，仅把 label / crumb / title / badge 换成 Autoloop 语义：
- *   工作流 → 规则、技能 → 插件、审计 → 事实溯源。
- * 合同 / 设备 / 仿真 / Copilot 等模块源码仍在仓库内，按「逐个补充」节奏恢复。
+ * 导航沿用 NAV_ITEMS 单一数据源与 navByKey（增删模块不索引错位）。
+ * M2 把 label / crumb / title / badge 换成 Autoloop 语义：工作流→规则、技能→插件。
+ * M6 按「逐个补充」节奏新增第 3 个业务模块「决策」（架构设计决策面板）。
+ * 合同 / 设备 / 仿真 / Copilot 等模块源码仍在仓库内，按节奏逐步恢复。
  */
 export const NAV_ITEMS: NavItem[] = [
   { key: 'overview', href: '/', label: '总览', icon: 'i-grid', crumb: 'Agentic OS / 工作台', title: 'Automation Workbench', badge: '规则 · 事件 · 轮次' },
   { key: 'workflows', href: '/workflows', label: '规则', icon: 'i-list', crumb: 'Agentic OS / 规则', title: 'Rules', badge: '事件触发与派活' },
   { key: 'skills', href: '/skills', label: '插件', icon: 'i-cube', crumb: 'Agentic OS / 插件', title: 'Plugins', badge: '四方向插件注册表' },
+  { key: 'decisions', href: '/decisions', label: '决策', icon: 'i-bulb', crumb: 'Agentic OS / 决策', title: 'Architecture Decisions', badge: 'ADR · 方案权衡 · 落地' },
   { key: 'settings', href: '/settings', label: '设置', icon: 'i-wrench', crumb: 'Agentic OS / 设置', title: 'Settings', badge: '账号 · 用量 · 事实溯源' },
 ];
 

@@ -233,7 +233,9 @@ autoloop 完整能力折算 **远超 4 个模块**，一次性全量搭建必然
 | M2 | 前端数据层 `frontend/lib/loop-{types,format,api,hooks}.ts`（镜像/映射/端点/SWR，零新 CSS）；改造 `KpiGrid`/`LiveTrace`/`RecentWorkflows`/`WorkflowFormModal` + 4 页面（`page.tsx`/`workflows`/`skills`/`settings`）+ `nav.ts`/`TopNav` 文案；`tests/loop-ui-viewports.mjs`（56 项四视口）、`tests/loop-concurrency-e2e.mjs`（30 项并发）|
 | M3 | 审批卡片台 `frontend/components/dashboard/ApprovalCards.tsx`（复用 `.card/.wf-card/.chip/.run-btn`，零新增 CSS）+ 总览接线 `page.tsx`（审批台置顶 + 待拍板条目跳 `#approval`）；`tests/loop-approval-e2e.mjs`（37 项全链路 e2e）；`tests/loop-ui-viewports.mjs`（扩至 74 项，含审批台四视口 + 拍板续跑实操）；`package.json`（`test:loop-approval` 脚本）· 本文档 |
 | M4 | 后端：`shared/loop.ts`（`plugin.disabled/enabled` 事实+输入+`disabledPlugins` 投影+卡片 `channel/answerers` 快照+`LOOP_API.PLUGIN_*`+版本 `0.4.0`）· `backend/lib/loop/kernel.ts`（evolve/decide/matchRules/makeCard/card.answer 校验/stateOf）· `backend/functions/loop.ts`（`postPluginDisable/Enable`、`postCardAnswer` 会话注入 `by` + 403 映射）· `backend/lib/resp.ts`（`forbidden`）· `router.ts`（2 条启停路由）。前端：`frontend/lib/loop-{types,api,format}.ts` 同步 · `skills/page.tsx`（停用/启用 + 登记插件表单）· `components/modals/RunWhyModal.tsx`（why 溯源时间线）· `components/dashboard/RulePreview.tsx`（check/emit 预演）· `RecentWorkflows`（溯源按钮）· `page.tsx`/`workflows/client.tsx` 接线。`tests/loop-kernel.test.ts`（91）· `tests/loop-api-smoke.ts`（61）· `tests/loop-m4-e2e.mjs`（36 项全链路）· `tests/loop-ui-viewports.mjs`（扩至 102）· `package.json`（`test:loop-m4`）· 本文档 |
-| M5+ | 见各期实施记录（追加于本文末「实施日志」） |
+| M5 | 线上发版（`publish.js --start-cmd` 显式覆盖坏自启动配置）；线上独立数据文件 `.data/store-online.json`；线上全链路 + 四视口 52/0 验收；线上总览实拍截图 · 本文档 M5 实施日志 |
+| M6 | **架构设计决策面板（文档 08 第 1 期 MVP）**：`shared/decision.ts`（状态机/归一化加权评分/权衡校验/到期复核/决策→规则草案，纯函数）· `backend/lib/kv.ts`（`decision:` 独立前缀）· `backend/functions/decisions.ts`（8 端点 REST + 独立播种锁）· `backend/functions/router.ts`（8 路由）。前端 `frontend/lib/decision-{types,api,format,hooks}.ts` · `nav.ts`（第 5 项「决策」）· `app/(workbench)/decisions/page.tsx` · `components/dashboard/DecisionBoard.tsx` · `components/modals/Decision{Detail,Form}Modal.tsx` · 总览 `page.tsx`（待复核置顶）。`tests/decision-kernel.test.ts`（51）· `tests/decision-api-smoke.ts`（63）· `tests/decision-ui-viewports.mjs`（46）· `package.json`（3 脚本）· 本文档 |
+| M7+ | 文档 08 第 2/3 期（评审流 / 谱系 / 时间线 / AI 起草 / 影响面分析 / 导出），见各期实施记录（追加于本文末「实施日志」） |
 
 ---
 
@@ -347,3 +349,29 @@ autoloop 完整能力折算 **远超 4 个模块**，一次性全量搭建必然
   - **自启动修复实证**：距首次发版约 21 小时内平台曾自动重启，3000 的 PID 由 `46287` 变为 `16205`，且自动以修好的 `server.mjs` 配置拉起 M4（healthz `0.4.0`）——证明坏命令被覆盖后，平台被动重启也能稳定拉起，不再复发「拉不起来」。
   - **「自动重启失败」提醒定性**：多轮该提醒复验时两个服务均 `/` 200、healthz `0.4.0`、PID 未被替换、端口唯一；判定为平台 dev-server watcher 的监控层噪声（它预期 Next dev server，实际跑的是 `server.mjs` 生产服务），与线上服务可用性无关，无需操作。
   - **收尾提交**：本文件（M5 部署记录 + 线上验收矩阵 + 上述复验）为唯一未入库改动，以 M5 收尾文档增量提交入库，历史连续、非 force。
+
+---
+
+- **2026-11-13 M6 完成（架构设计决策面板 · 文档 08 第 1 期 MVP）**：用户「继续干吧 / 继续完成未完成的任务」触发。M1–M5 全部完成后，落地用户最初点名要「重新一个个功能补充」的第 3 个业务模块；按文档 08 §3 的 4 项 MVP 实现，§7 的 7 个待确认方向按最佳实践兜底（见文档 08 头部）。
+  - **后端（独立前缀、零侵入）**：`shared/decision.ts` 为唯一事实源的纯函数内核（状态机 `draft→review→accepted→deprecated/superseded`、归一化加权评分、B3 权衡显式化校验、C4 到期复核、D1 决策→规则草案）；数据落 `decision:{uid}:d:*` 独立 KV 前缀 + `decision:{uid}:meta` 独立播种锁（仿 loop/seed 的 per-uid 互斥），**不复用 `ensureSeeded`、不写 autoloop 事实日志**；`backend/functions/decisions.ts` 8 端点（list/create/get/patch/delete/review/score/to-rule），uid/owner 一律会话注入，编辑/流转写 history + 审计，PATCH 拒绝改状态（必须走 /review）。
+  - **D1 对齐重构后语义**：脑暴稿里的「回写 `/api/workflows`」改为 **生成 `LoopRule` 草案 → `validateRule` 校验 → 前端 `loopApi.checkRule` + `postRule` 落库**（复用 M4 能力）；`to-rule` 端点只生成+校验、**不擅自写事实日志**，由用户在详情里确认后落库，保证决策模块与内核解耦。
+  - **前端（视觉零改动，UI 以当前项目风格为准）**：`decision-{types,api,format,hooks}.ts` 镜像/映射/端点/SWR（统一 `revalidateDecisions()` 入口，单向 DAG，渲染函数互不调用）；`nav.ts` 加第 5 项「决策」；`decisions/page.tsx` = PageHeader + 3 计数卡 + 状态分段 + 卡片流看板 + 搜索 + 待复核置顶；`DecisionBoard.tsx` / `DecisionDetailModal.tsx` / `DecisionFormModal.tsx` 全部复用 `.card/.wf-grid/.wf-card/.tbl/.chip/.wf-form/.top-tabs→.wf-top/.run-btn/.primary-btn/.dev-card/.rel-*`，**零新增 CSS**。总览 `page.tsx` 把到期复核决策接入「今天要处理」。
+  - **窄屏关键修正**：`.top-tabs` 在 `@media(max-width:900px)` 被 `display:none`（顶部导航专属规则），会误伤文档 08 §6 要求的「窄屏分段筛选 + 卡片流」——故分段按钮改用未被隐藏的 `.wf-top` 容器 + 内联样式，四视口 375/768 下按钮可见且 ≥44px。
+
+- **2026-11-13 M6 验收矩阵（全绿）**：
+
+| 验证项 | 命令 / 方法 | 结果 |
+|---|---|---|
+| 决策内核纯函数（评分/状态机/编号/权衡/到期/规则草案） | `npm run test:decision-kernel` | **51 / 0** |
+| 决策 REST 全链路（CRUD/筛选/校验/状态机/评分/转执行/审计/多租户/loop 零回归） | `npm run test:decision-api` | **63 / 0** |
+| 决策页四视口 375/768/1440/1920（溢出/图标/错误/分段/卡片/触控区/MADR 详情/权重实操/新建/置顶） | `npm run test:decision-ui` | **46 / 0** |
+| 既有接口零回归 | `npm run test:api` | 34 / 0（不变） |
+| 既有内核 / REST 零回归 | `test:loop-kernel` / `test:loop-api` | 91 / 0 · 61 / 0（不变） |
+| 既有四视口（导航 4→5 项）零回归 | `npm run test:loop-ui` | 102 / 0（不变） |
+| **loop 事实日志零侵入** | 冒烟断言决策 CRUD/评分/转规则全程 `loop seq` 保持基线 | 通过 |
+| 后端 / 前端 TypeScript | `tsc -p backend` / `cd frontend && tsc --noEmit` | 均通过 |
+| Next 生产构建 | `cd frontend && npm run build` | 通过，12 页静态生成（新增 `/decisions`） |
+| 目视核对 | 决策看板 / 详情 Modal 两张截图 | 白底绿系圆角卡片、5 项导航、MADR 分节、加权评分条形、无溢出/黑块/错位 |
+
+  > **UI 一致性**：M6 严格沿用当前项目设计语言（`tokens.css` 变量 + `app.css` 语义类），未引入任何新 CSS 类、新配色体系或外部依赖；所有图表（评分条形）用既有 `.wf-bar` + 内联样式表达。
+  > **分期边界**：文档 08 第 2/3 期（评审流 C1/C2、谱系 A4、时间线 E2、AI 起草 D4、影响面 D3、导出 F1/F2、敏感性 B4）留 M7+，不塞进 M6（规模闸门：一次只补 1 个模块）。

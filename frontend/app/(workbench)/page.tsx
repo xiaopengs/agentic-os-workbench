@@ -11,6 +11,7 @@ import { RunWhyModal } from '@/components/modals/RunWhyModal';
 import { Icon, type IconName } from '@/components/icons/Icon';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { useLoopWorkbench } from '@/lib/loop-hooks';
+import { useDecisions } from '@/lib/decision-hooks';
 import { navByKey } from '@/lib/nav';
 
 const OVERVIEW = navByKey('overview');
@@ -33,12 +34,20 @@ interface AttentionItem {
  */
 export default function OverviewPage() {
   const { state, totals, facts, loading, sync } = useLoopWorkbench();
+  const { data: decisions } = useDecisions();
   const [open, setOpen] = useState(false);
   const [whyRun, setWhyRun] = useState<string | null>(null);
 
   const openCards = state?.cards.filter((c) => c.state === 'open').length ?? 0;
+  const dueDecisions = (decisions ?? []).filter((d) => d.reviewDue && d.status !== 'deprecated' && d.status !== 'superseded');
 
   const attention: AttentionItem[] = [];
+  if (dueDecisions.length > 0) {
+    attention.push({
+      key: 'decisions', title: `${dueDecisions.length} 条架构决策待复核`, time: '到期复核 · 决策记录与方案权衡需重新确认',
+      icon: 'i-bulb', icoTone: 'a', chipText: '待复核', chipTone: 'warn', href: '/decisions',
+    });
+  }
   if (openCards > 0) {
     attention.push({
       key: 'cards', title: `${openCards} 张卡片待拍板`, time: '回答后自动续跑，挂起期间不占轮次',
@@ -92,7 +101,7 @@ export default function OverviewPage() {
               <span className={`chip ${a.chipTone}`} style={{ marginLeft: 'auto', flex: 'none' }}>
                 {a.chipText}
               </span>
-              <Link className="chev" href={a.href} aria-label={a.href === '#approval' ? '前往审批卡片台处理' : '前往规则页处理'}>
+              <Link className="chev" href={a.href} aria-label={`前往处理：${a.title}`}>
                 <Icon name="i-chev-r" />
               </Link>
             </div>
