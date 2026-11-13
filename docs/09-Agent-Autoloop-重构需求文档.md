@@ -375,3 +375,5 @@ autoloop 完整能力折算 **远超 4 个模块**，一次性全量搭建必然
 
   > **UI 一致性**：M6 严格沿用当前项目设计语言（`tokens.css` 变量 + `app.css` 语义类），未引入任何新 CSS 类、新配色体系或外部依赖；所有图表（评分条形）用既有 `.wf-bar` + 内联样式表达。
   > **分期边界**：文档 08 第 2/3 期（评审流 C1/C2、谱系 A4、时间线 E2、AI 起草 D4、影响面 D3、导出 F1/F2、敏感性 B4）留 M7+，不塞进 M6（规模闸门：一次只补 1 个模块）。
+
+- **2026-11-13 GitHub 提交（M6 架构设计决策面板）**：commit `c4c140254f7c549c358816244470db4585f4b862`（parent `a3fcb5d2…`，历史连续、非 force），20 文件（13 新增 + 7 修改）。以远端 `a3fcb5d2` codeload 快照作基线逐文件比对生成精确清单，剔除 `package-lock.json` / `frontend/next-env.d.ts` / `frontend/tsconfig.tsbuildinfo` 等规范化与构建产物误报；沿用 `sandbox-github-commit` skill 的 Git Data API 路径（blob → tree → commit → PATCH ref），显式清单隔离凭证，Token 仅单次环境变量注入、不落盘不回显。提交前 dry-run 复核、`.gitignore` 误伤检查（20 路径均不命中 `*token*`）、项目内凭证残留扫描（0 命中）；提交后独立校验 ref / parent / 20 文件状态分布 / 关键文件内容 / `frontend/styles/tokens.css` 未被误伤 / tree 未截断（147 blob）。已提醒用户 revoke 该 classic PAT。
