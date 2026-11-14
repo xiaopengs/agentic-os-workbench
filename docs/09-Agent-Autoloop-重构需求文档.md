@@ -411,3 +411,5 @@ autoloop 完整能力折算 **远超 4 个模块**，一次性全量搭建必然
   | 合计 | **新增 167 项 + 既有 573 项 = 740 项断言，0 失败** |
 
   > **两处方法论坑**：① `LoopState.rules` 是**数组**、`LoopView.rules` 是**对象**，闭环脚本首版误用对象索引，产生 1 个假失败与 3 处「假绿」，已统一改为数组判断后重跑 45/45；② 播种会写入演示用量基线（1 run / 4800 tokens / 36 分），这不是脏数据，测试断言需以基线为起点做相对比较。测试服务用独立端口 3738 + 独立 `.data/store-test-3738.json`，全程不触碰线上 3000 与外网链接。
+
+- **2026-11-14 GitHub 提交（全项目测试加固 + 6 个缺陷修复）**：commit `8a02d863efb22837b566f985723fa8bb2179d9da`（parent `8e2e531f…`，历史连续、非 force），9 文件（3 新增 + 6 修改）。以远端 `8e2e531f` codeload 快照作基线逐文件比对生成精确清单，剔除 `package-lock.json` / `frontend/next-env.d.ts` 规范化与构建产物误报；沿用 `sandbox-github-commit` skill 的 Git Data API 路径（blob → tree → commit → PATCH ref），显式清单隔离凭证，Token 仅单次环境变量注入、不落盘不回显。提交前 dry-run 复核、`.gitignore` 误伤检查（9 路径均不命中 `*token*`，`frontend/styles/tokens.css` 仍在仓库）、项目内凭证残留扫描（0 命中）；提交后独立校验 ref / parent / 9 文件状态分布 / 关键文件内容 / tree 未截断（150 blob），并对 9 个文件做远端内容与本地**逐字节比对**，全部一致。已提醒用户 revoke 该 classic PAT。
