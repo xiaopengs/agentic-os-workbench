@@ -254,6 +254,8 @@ export interface LoopWorkerConfig {
   auto: boolean;
   bin: string;
   intervalMs: number;
+  /** CLI 模型 ID（可选）；未设置 = 平台默认档 */
+  model?: string;
 }
 export interface LoopWorkerJob {
   runId: string;
@@ -268,6 +270,8 @@ export interface LoopWorkerJob {
   summary?: string;
   error?: string;
   real: boolean;
+  /** 本轮模型；null = 平台默认档 */
+  model?: string | null;
   facts: number[];
 }
 export interface LoopWorkerStatus {
@@ -275,6 +279,8 @@ export interface LoopWorkerStatus {
   busy: boolean;
   available: boolean;
   reason: string;
+  /** 当前生效模型；null = 平台默认档 */
+  model?: string | null;
   totalExecuted: number;
   lastTickAt?: string;
   lastJob?: LoopWorkerJob;

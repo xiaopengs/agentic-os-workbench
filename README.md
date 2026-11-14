@@ -105,15 +105,24 @@ JWT_SECRET='<≥32 位随机串>' node --import tsx/esm frontend/server.mjs
 
 | 模式 | 说明 | 配置 |
 |---|---|---|
-| `cli`（默认） | spawn 本机**已登录**的命令行 Agent（默认 `codebuddy -p`），凭据算在你自己账号下，与参考项目 `agent-autoloop` 的 worker 语义一致 | `LOOP_WORKER_MODE=cli` |
-| `gateway` | 走 OpenAI 兼容 `/chat/completions` | `AI_GATEWAY_API_KEY` / `AI_GATEWAY_BASE_URL` |
+| `cli`（默认） | spawn 本机**已登录**的命令行 Agent（默认 `codebuddy -p`），模型由平台 CLI 的默认档决定，凭据算在你自己账号下 | `LOOP_WORKER_MODE=cli` |
+| `gateway` | 走 OpenAI 兼容 `/chat/completions`，用你自己的 Key 与模型 | `AI_GATEWAY_API_KEY` / `AI_GATEWAY_BASE_URL` / `AI_GATEWAY_MODEL` |
 | `off` | 停自动执行（仍可手动「立即执行」） | `LOOP_WORKER_MODE=off` |
+
+**模型到底用的哪个**：`GET /api/loop/worker/status` 返回 `model` 字段，总览页「Agent 执行器」
+面板直接显示。`cli` 模式下若不显式指定，CLI 用平台默认档（本环境实测 `hy4free`，
+可在 CLI 日志/trace 里核对 `"model":"hy4free"`）；设置 `LOOP_WORKER_MODEL` 后会把
+`--model <id>` 透传给 CLI，此时每轮执行记录都会带上确切模型名。`gateway` 模式则由
+`AI_GATEWAY_MODEL` 指定（缺省 `hy4free`）。**模型是真的，但 `cli` 模式的模型入口是平台
+CLI 的登录态，不是项目自建的 API 通道**——要完全用自己账号的模型，走 `gateway`。
+`gateway` 未配齐 Key/BaseURL 时状态接口会明确报「不可用」，不会静默失败。
 
 常用环境变量（均可写在 `frontend/.env`，该文件被 `.gitignore` 忽略）：
 
 ```
 LOOP_WORKER_MODE=cli                    # cli | gateway | off
 LOOP_WORKER_BIN=codebuddy              # 或 CLI 绝对路径
+LOOP_WORKER_MODEL=                     # 可选：显式指定 CLI 模型 ID；留空 = 平台默认档
 LOOP_WORKER_INTERVAL_MS=15000           # 自动轮询间隔
 LOOP_WORKER_TIMEOUT_MS=120000           # 单轮 Agent 超时
 LOOP_WORKER_MAX_PER_TICK=1              # 每轮最多执行几个轮次
@@ -121,9 +130,11 @@ LOOP_WORKER_AUTO=1                     # 0 = 关自动轮询
 LOOP_WORKER_DISABLE=1                  # 完全不加载执行器
 ```
 
-执行器 API：`GET /api/loop/worker/status`（在线状态 / 累计执行 / 最近一轮）、
-`POST /api/loop/worker/run`（立即跑一轮）、`POST /api/loop/worker/config`
-（切模式 / 自动开关，仅放行 `mode`、`maxPerTick`、`auto` 三个字段）。
+`LOOP_WORKER_MODEL` 与 `bin` / `timeoutMs` / `intervalMs` 一样由**部署方管控**，
+前端用户无法修改；`/api/loop/worker/config` 仅放行 `mode`、`maxPerTick`、`auto` 三个字段。
+
+执行器 API：`GET /api/loop/worker/status`（在线状态 / 当前模型 / 累计执行 / 最近一轮）、
+`POST /api/loop/worker/run`（立即跑一轮）、`POST /api/loop/worker/config`（切模式 / 自动开关）。
 总览页「Agent 执行器」面板可直接操作和查看。
 
 **安全边界**（对齐参考项目「指令数据分离」）：事件正文只写进隔离目录的 `context.json`，

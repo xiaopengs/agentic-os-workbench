@@ -45,6 +45,26 @@ function boundedInt(raw: string | undefined, fallback: number, min: number, max:
   return Number.isFinite(n) && n >= min && n <= max ? Math.floor(n) : fallback;
 }
 
+/** 模型 ID 清洗：只放行可见标识符字符，防止把注入内容拼进 CLI 参数 */
+export function safeModel(raw: string | undefined): string | undefined {
+  const v = String(raw ?? '').trim();
+  return /^[A-Za-z0-9._:-]{1,64}$/.test(v) ? v : undefined;
+}
+
+/**
+ * CLI 模型参数：仅当部署方显式配置 LOOP_WORKER_MODEL 时才透传 --model。
+ * 未配置时保持 CLI 原有行为（平台默认档），不把某个模型名硬编码进代码。
+ */
+export function modelCliArgs(model?: string): string[] {
+  const m = safeModel(model);
+  return m ? ['--model', m] : [];
+}
+
+/** gateway 模式的模型：AI_GATEWAY_MODEL，未配置时沿用网关默认档 */
+export function gatewayModel(env: Env): string {
+  return safeModel(getEnv(env, 'AI_GATEWAY_MODEL')) || 'hy4free';
+}
+
 /** 环境变量基线配置（进程级） */
 export function envWorkerConfig(env: Env): LoopWorkerConfig {
   const mode = String(getEnv(env, 'LOOP_WORKER_MODE') || DEFAULT_WORKER_CONFIG.mode).toLowerCase();
@@ -55,6 +75,7 @@ export function envWorkerConfig(env: Env): LoopWorkerConfig {
     auto: String(getEnv(env, 'LOOP_WORKER_AUTO') || '1').toLowerCase() !== '0',
     bin: getEnv(env, 'LOOP_WORKER_BIN') || 'codebuddy',
     intervalMs: boundedInt(getEnv(env, 'LOOP_WORKER_INTERVAL_MS'), 15_000, 3_000, 300_000),
+    model: safeModel(getEnv(env, 'LOOP_WORKER_MODEL')),
   };
 }
 
@@ -65,8 +86,8 @@ export async function readUserConfig(r: Repo, uid: string): Promise<Partial<Loop
 
 /**
  * 合并出最终生效配置：环境变量基线 + 用户覆盖。
- * 用户只允许改 mode / maxPerTick / auto；bin / timeoutMs / intervalMs 仍由部署方管控，
- * 避免前端把执行器指到任意程序或把轮询打到 1ms。
+ * 用户只允许改 mode / maxPerTick / auto；bin / timeoutMs / intervalMs / model 仍由部署方管控，
+ * 避免前端把执行器指到任意程序、把轮询打到 1ms，或把模型指到未授权通道。
  */
 export async function effectiveConfig(r: Repo, uid: string, env: Env): Promise<LoopWorkerConfig> {
   const base = envWorkerConfig(env);
@@ -78,6 +99,8 @@ export async function effectiveConfig(r: Repo, uid: string, env: Env): Promise<L
     maxPerTick: typeof override.maxPerTick === 'number' && override.maxPerTick >= 1 && override.maxPerTick <= 5
       ? Math.floor(override.maxPerTick) : base.maxPerTick,
     auto: typeof override.auto === 'boolean' ? override.auto : base.auto,
+    // 显式回写：即便历史 KV 里被写入 model，也以部署方环境变量为准
+    model: base.model,
   };
 }
 
@@ -130,7 +153,19 @@ export function workerBusy(uid: string): boolean {
 export async function workerStatus(r: Repo, uid: string, env: Env): Promise<LoopWorkerStatus> {
   const config = await effectiveConfig(r, uid, env);
   const rec = await readStatusRecord(r, uid);
-  const probe = config.mode === 'cli' ? await probeCli(config.bin) : { available: true, reason: '' };
+  const gatewayReady = Boolean(getEnv(env, 'AI_GATEWAY_API_KEY') && getEnv(env, 'AI_GATEWAY_BASE_URL'));
+  // gateway 未配齐凭据时明确判为不可用，避免切过去后「看起来在线、实际每轮静默失败」
+  const probe = config.mode === 'cli'
+    ? await probeCli(config.bin)
+    : config.mode === 'gateway'
+      ? {
+          available: gatewayReady,
+          reason: gatewayReady
+            ? `AI Gateway 已就绪 · 模型 ${gatewayModel(env)}（OpenAI 兼容）`
+            : 'AI Gateway 未配置：需 AI_GATEWAY_API_KEY 与 AI_GATEWAY_BASE_URL，当前不可用',
+        }
+      : { available: true, reason: '' };
+  const model = config.mode === 'gateway' ? gatewayModel(env) : (config.model ?? null);
   return {
     config,
     busy: workerBusy(uid),
@@ -138,6 +173,7 @@ export async function workerStatus(r: Repo, uid: string, env: Env): Promise<Loop
     reason: config.mode === 'off'
       ? '自动执行已关闭（mode=off），可在设置中切换为真实 Agent'
       : (probe.reason || (config.mode === 'cli' ? '本机 CLI Agent 可用' : 'AI Gateway 模式')),
+    model,
     totalExecuted: rec.totalExecuted,
     lastTickAt: rec.lastTickAt,
     lastJob: rec.lastJob,
@@ -377,7 +413,9 @@ async function executeOne(
   const t0 = Date.now();
   const job: LoopWorkerJob = {
     runId: run.id, rule: run.rule, agent: run.agent, mode: config.mode,
-    status: 'running', startedAt, real: config.mode !== 'off', facts: [],
+    status: 'running', startedAt, real: config.mode !== 'off',
+    model: config.mode === 'gateway' ? gatewayModel(env) : (config.model ?? null),
+    facts: [],
   };
 
   const rule = view.rules[run.rule];
@@ -409,7 +447,7 @@ async function executeOne(
       // 后 fork 出子进程（实测该子进程在服务进程里会挂住，导致 CLI 永不返回、每轮超时）。
       const res = await runProcess(cli.bin, [
         ...cli.prefix,
-        '-p', '--tools', 'Read', '--add-dir', dir,
+        '-p', ...modelCliArgs(config.model), '--tools', 'Read', '--add-dir', dir,
         '--strict-mcp-config', '--mcp-config', '{}', '--setting-sources', '',
         '--no-session-persistence',
         '--system-prompt', SYSTEM_PROMPT,

@@ -9,7 +9,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   normalizeReceipt, envWorkerConfig, effectiveConfig, saveUserConfig, readUserConfig,
-  listLoopUsers, cliInstalled, runWorkerTick,
+  listLoopUsers, cliInstalled, runWorkerTick, workerStatus,
+  modelCliArgs, safeModel, gatewayModel,
 } from '../backend/lib/loop/worker.ts';
 import { LOOP_KERNEL_VERSION } from '../shared/loop.ts';
 import { repo } from '../backend/lib/kv.ts';
@@ -21,6 +22,7 @@ test('① 环境配置默认值与边界钳制', () => {
   assert.equal(base.timeoutMs, 120_000);
   assert.equal(base.auto, true);
   assert.equal(base.bin, 'codebuddy');
+  assert.equal(base.model, undefined, '未配置时不硬编码模型名，交由 CLI 平台默认档');
 
   const bad = envWorkerConfig({
     LOOP_WORKER_MODE: 'gateway',
@@ -160,4 +162,46 @@ test('⑩ 全局单飞：Agent 执行中再次 tick 不重复领活（不产生 
   const after = await readView(r, uid);
   assert.equal(after.seq, before.seq, 'off 模式下不应写入任何事实');
   assert.equal(Object.values(after.runs).filter((x) => x.state === 'queued').length, 1, '轮次应完好留在 queued');
+});
+
+test('⑪ 模型配置：默认交给平台档；显式配置才透传 --model，且前端不可私改', async () => {
+  assert.equal(envWorkerConfig({}).model, undefined, '未配置时不得硬编码模型名');
+
+  const pinned = envWorkerConfig({ LOOP_WORKER_MODEL: 'hy4std' });
+  assert.equal(pinned.model, 'hy4std');
+  assert.deepEqual(modelCliArgs(pinned.model), ['--model', 'hy4std']);
+  assert.deepEqual(modelCliArgs(undefined), []);
+  assert.deepEqual(modelCliArgs('bad model;rm'), [], '含空格/分号不得拼进 CLI 参数');
+  assert.deepEqual(modelCliArgs('x\n--dangerously-skip-permissions'), [], '控制字符不得拼进 CLI 参数');
+  assert.equal(safeModel('  glm-5.3  '), 'glm-5.3');
+  assert.equal(safeModel('a'.repeat(65)), undefined);
+
+  assert.equal(gatewayModel({}), 'hy4free');
+  assert.equal(gatewayModel({ AI_GATEWAY_MODEL: 'glm-5.3' }), 'glm-5.3');
+
+  const env = { ...process.env, LOCAL_STORE: 'file', LOCAL_STORE_PATH: '/tmp/worker-model-test.json', LOOP_WORKER_MODEL: 'hy4std' };
+  const r = await repo(env);
+  const uid = 'usr_workermodel';
+  await saveUserConfig(r, uid, env, { model: 'deepseek-v4-pro' });
+  const cfg = await effectiveConfig(r, uid, env);
+  assert.equal(cfg.model, 'hy4std', '部署方配置优先，前端不能把模型指到别的通道');
+});
+
+test('⑫ gateway 未配齐凭据时状态接口明确判为不可用（不静默失败）', async () => {
+  const env = {
+    ...process.env, LOCAL_STORE: 'file', LOCAL_STORE_PATH: '/tmp/worker-gw-test.json',
+    LOOP_WORKER_MODE: 'gateway', AI_GATEWAY_API_KEY: '', AI_GATEWAY_BASE_URL: '',
+  };
+  const r = await repo(env);
+  const s = await workerStatus(r, 'usr_workergw', env);
+  assert.equal(s.config.mode, 'gateway');
+  assert.equal(s.available, false);
+  assert.match(s.reason, /AI_GATEWAY/);
+  assert.equal(s.model, 'hy4free');
+
+  const ready = await workerStatus(r, 'usr_workergw2', {
+    ...env, AI_GATEWAY_API_KEY: 'test-key', AI_GATEWAY_BASE_URL: 'https://example.invalid/v1', AI_GATEWAY_MODEL: 'glm-5.3',
+  });
+  assert.equal(ready.available, true);
+  assert.equal(ready.model, 'glm-5.3');
 });

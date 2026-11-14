@@ -73,6 +73,7 @@ export function WorkerPanel() {
 
   const chip = status ? statusChip(status) : { tone: 'mute', text: '加载中' };
   const last = status?.lastJob;
+  const modelLabel = status?.model || '平台默认档';
 
   return (
     <div className="card" style={{ marginBottom: 18 }}>
@@ -113,7 +114,16 @@ export function WorkerPanel() {
           />
           自动轮询（每 {Math.round((status?.config.intervalMs ?? 15000) / 1000)} 秒）
         </label>
-        <span className="chip info" style={{ marginLeft: 'auto' }}>
+        <span
+          className="chip info"
+          style={{ marginLeft: 'auto' }}
+          title={status?.model
+            ? `部署方显式指定模型：${status.model}（透传 --model）`
+            : 'CLI 未传 --model，由平台默认档决定；本环境实测为 hy4free'}
+        >
+          <i />模型 {modelLabel}
+        </span>
+        <span className="chip info">
           <i />累计真实执行 {status?.totalExecuted ?? 0} 轮
         </span>
       </div>
@@ -128,6 +138,7 @@ export function WorkerPanel() {
             <span className="sub">{last.rule} · {last.agent}</span>
             {last.durationMs != null && <span className="sub">{(last.durationMs / 1000).toFixed(1)}s</span>}
             {last.real && <span className="chip ok"><i />真实模型</span>}
+            <span className="chip info" title="本轮实际使用的模型"><i />{last.model || '平台默认档'}</span>
           </div>
           {last.summary && <div style={{ marginTop: 6, color: 'var(--t2)' }}>{last.summary}</div>}
           {last.error && <div style={{ marginTop: 6, color: 'var(--red)' }}>{last.error}</div>}
@@ -136,7 +147,10 @@ export function WorkerPanel() {
 
       {!status?.available && (
         <div className="empty-tip" style={{ padding: '14px 10px' }}>
-          {status?.reason || '执行器不可用'} · 真实 Agent 模式需要本机已登录的命令行 Agent
+          {status?.reason || '执行器不可用'}
+          {status?.config.mode === 'gateway'
+            ? ' · gateway 模式需在部署环境配置 AI_GATEWAY_API_KEY / AI_GATEWAY_BASE_URL'
+            : ' · 真实 Agent 模式需要本机已登录的命令行 Agent'}
         </div>
       )}
     </div>

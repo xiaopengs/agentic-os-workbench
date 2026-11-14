@@ -441,6 +441,11 @@ export interface LoopWorkerConfig {
   bin: string;
   /** 自动轮询间隔（毫秒，默认 15000） */
   intervalMs: number;
+  /**
+   * CLI 模型 ID（可选，仅部署方可配）。留空则不传 --model，由 CLI 平台默认档决定。
+   * 与 gateway 模式的 AI_GATEWAY_MODEL 相互独立。
+   */
+  model?: string;
 }
 
 export const DEFAULT_WORKER_CONFIG: LoopWorkerConfig = {
@@ -462,6 +467,8 @@ export interface LoopWorkerJob {
   error?: string;
   /** 真实执行标记：是否确实调用了外部 Agent（非模拟） */
   real: boolean;
+  /** 本轮使用的模型；null = 未显式指定，交由 CLI 平台默认档 */
+  model?: string | null;
   facts: number[];
 }
 
@@ -469,9 +476,11 @@ export interface LoopWorkerStatus {
   config: LoopWorkerConfig;
   /** 当前进程内是否有一个 tick 正在跑 */
   busy: boolean;
-  /** 执行器可用性与原因（如 CLI 不存在） */
+  /** 执行器可用性与原因（如 CLI 不存在 / Gateway 未配置） */
   available: boolean;
   reason: string;
+  /** 当前生效模型（显式配置值；null = CLI 平台默认档） */
+  model?: string | null;
   /** 已累计执行的轮次数 */
   totalExecuted: number;
   lastTickAt?: string;
