@@ -186,9 +186,31 @@ LOOP_WORKER_AUTO=1
 （本环境实测 `hy4free`）。**模型是真的**，但 `codebuddy` 的入口是平台 CLI 登录态、不是项目
 自建 API 通道；要用自己账号的模型，选 `http-direct`（或装好对应 CLI）再配 Provider 的 Key。
 
-**安全边界**：事件正文只写隔离目录 `context.json`，提示词里只出现校验过的结构字段与文件路径；
-每个 harness 都收敛为只读工具、禁 MCP / 插件 / 会话持久化，第三方 CLI 给「干净环境」不带平台凭据；
+**安全边界**：CLI 通道下事件正文只写隔离目录 `context.json`，提示词里只出现校验过的结构字段
+与文件路径；`http-direct` 没有文件读取工具，执行器会把同一份资料原样内联成明确标注的
+「不可信数据块」交给模型——指令在前、事件正文只在数据块里且声明一律无视，指令数据分离边界不变。
+每个 CLI harness 收敛为只读工具、禁 MCP / 插件 / 会话持久化，第三方 CLI 给「干净环境」不带平台凭据；
 模型输出经白名单归一化后才写入事实日志；Key 不回显、不落日志、不进事实日志；执行记录存独立 key。
+
+#### 实战：用 OpenRouter 免费档真跑（无需安装任何 CLI）
+
+选 `http-direct × openrouter`，在「连接设置」填 Key 与模型 ID：
+
+```
+harness  = http-direct
+provider = openrouter
+baseUrl  = https://openrouter.ai/api/v1        # 注册表默认值，可留空
+model    = nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free
+apiKey   = <你的 OpenRouter Key>
+```
+
+- 免费档以 `https://openrouter.ai/api/v1/models` 当前列表为准（`pricing.prompt` 与
+  `pricing.completion` 均为 `0`）。**部分免费模型会被上游限流（429）**，例如 Google Gemma 4
+  免费档实测不可用，所以显式锁定实测可用的免费模型，而不用 `openrouter/free` 自动路由。
+- 注册表中 `openrouter` 的默认模型就是免费档，开箱即用不会产生账单；要换付费模型在面板覆盖。
+- `http-direct` 无 `Read` 工具，资料由 `httpPromptWithContext()` 内联为不可信数据块，模型才看得到事件正文。
+- Key 只存服务端 KV（`.data/` 已被 `.gitignore` 忽略），只回显 `hasKey`，可在面板清除；
+  也可改用部署环境变量 `OPENROUTER_API_KEY`，省去在面板填写。
 
 > 注意：AI Copilot 侧栏由 `LOCAL_AI_MOCK` 控制（模拟流），与 Autoloop 执行器是两条独立链路；
 > 执行器走真实 Agent，不受该开关影响。

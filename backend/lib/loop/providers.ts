@@ -54,11 +54,12 @@ export const PROVIDER_SPECS: LoopProviderSpec[] = [
     label: 'OpenRouter',
     protocols: ['openai'],
     endpoints: { openai: 'https://openrouter.ai/api/v1' },
-    defaultModels: { openai: 'openai/gpt-4o-mini' },
+    // 默认给实测可用的免费档，避免开箱即用就产生账单；付费模型可在面板「连接设置」覆盖
+    defaultModels: { openai: 'nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free' },
     requiresKey: true,
     keyEnv: 'OPENROUTER_API_KEY',
     docs: 'https://openrouter.ai/keys',
-    note: '聚合多家的 OpenAI 兼容网关，模型 ID 形如 openai/gpt-4o-mini、anthropic/claude-sonnet-4.5；Anthropic 协议请用「自定义」覆盖端点',
+    note: '聚合多家的 OpenAI 兼容网关；免费档模型 ID 带 :free（用 https://openrouter.ai/api/v1/models 查当前列表，部分会上游限流）。Anthropic 协议请用「自定义」覆盖端点',
   },
   {
     id: 'deepseek',
