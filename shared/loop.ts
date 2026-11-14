@@ -417,6 +417,7 @@ export const LOOP_API = {
   WORKER_STATUS: '/loop/worker/status',
   WORKER_RUN: '/loop/worker/run',
   WORKER_CONFIG: '/loop/worker/config',
+  WORKER_CAPABILITIES: '/loop/worker/capabilities',
   PLUGIN_DISABLE: (id: string) => `/loop/plugins/${encodeURIComponent(id)}/disable`,
   PLUGIN_ENABLE: (id: string) => `/loop/plugins/${encodeURIComponent(id)}/enable`,
 } as const;
@@ -426,30 +427,78 @@ export const LOOP_API = {
  * 由外壳（worker）完成，语义对齐参考系统的 worker/ + plugins/ 分层。
  * ------------------------------------------------------------ */
 
-/** 执行模式：cli=本机已登录 CLI Agent（默认，真实）；gateway=HTTP 模型；off=停自动执行 */
+/**
+ * 执行模式（M7 遗留别名，M8 起仅 off 有执行语义）：
+ *   cli / gateway 仍可写入，后端会翻译成对应的 harness × provider 组合；
+ *   真正决定「怎么跑」的是 harness + provider 两个插件维度。
+ */
 export type LoopWorkerMode = 'cli' | 'gateway' | 'off';
+
+/** 模型 API 方言，是 harness 与 provider 之间唯一的耦合契约 */
+export type LoopProviderProtocol = 'platform' | 'anthropic' | 'openai' | 'google';
+
+/** 能力清单：harness 插件的可选项（含本机真实安装状态） */
+export interface LoopHarnessCapability {
+  id: string;
+  label: string;
+  protocol: LoopProviderProtocol;
+  installed: boolean;
+  version?: string;
+  reason: string;
+  installHint?: string;
+  docs?: string;
+  note?: string;
+}
+
+/** 能力清单：provider 插件的可选项（Key 只回显「有没有」，绝不回显值） */
+export interface LoopProviderCapability {
+  id: string;
+  label: string;
+  protocols: LoopProviderProtocol[];
+  endpoints: Partial<Record<LoopProviderProtocol, string>>;
+  defaultModels: Partial<Record<LoopProviderProtocol, string>>;
+  requiresKey: boolean;
+  hasKey: boolean;
+  keyEnv?: string;
+  docs?: string;
+  note?: string;
+}
+
+export interface LoopWorkerCapabilities {
+  harnesses: LoopHarnessCapability[];
+  providers: LoopProviderCapability[];
+  protocols: Array<{ id: LoopProviderProtocol; label: string }>;
+}
 
 export interface LoopWorkerConfig {
   mode: LoopWorkerMode;
+  /** Agent 运行时插件 id（codebuddy / claude-code / codex / gemini-cli / http-direct） */
+  harness: string;
+  /** 模型供应商插件 id（platform / openrouter / deepseek / kimi / glm / custom） */
+  provider: string;
+  /** 自定义网关时用户指定的协议；留空则用 harness 默认协议 */
+  protocol?: LoopProviderProtocol;
+  /** 覆盖供应商默认 Base URL */
+  baseUrl?: string;
+  /** 显式模型 ID；留空由注册表默认值或端点决定 */
+  model?: string;
+  /** 是否已配置 API Key（仅布尔，值不回显、不入库） */
+  hasKey: boolean;
   /** 单轮最多执行多少个 queued 轮次（默认 1，避免一次烧太多 Token） */
   maxPerTick: number;
   /** 单轮 Agent 超时（毫秒，默认 120000） */
   timeoutMs: number;
   /** 是否自动高频轮询（默认 true；关掉则仅手动触发） */
   auto: boolean;
-  /** CLI 可执行文件名/路径（默认 codebuddy） */
+  /** CLI 可执行文件名/路径（部署方管控） */
   bin: string;
   /** 自动轮询间隔（毫秒，默认 15000） */
   intervalMs: number;
-  /**
-   * CLI 模型 ID（可选，仅部署方可配）。留空则不传 --model，由 CLI 平台默认档决定。
-   * 与 gateway 模式的 AI_GATEWAY_MODEL 相互独立。
-   */
-  model?: string;
 }
 
 export const DEFAULT_WORKER_CONFIG: LoopWorkerConfig = {
-  mode: 'cli', maxPerTick: 1, timeoutMs: 120_000, auto: true, bin: 'codebuddy', intervalMs: 15_000,
+  mode: 'cli', harness: 'codebuddy', provider: 'platform', hasKey: false,
+  maxPerTick: 1, timeoutMs: 120_000, auto: true, bin: 'codebuddy', intervalMs: 15_000,
 };
 
 /** 单次执行的记录（写入独立 key，不侵入事实日志） */
@@ -469,6 +518,9 @@ export interface LoopWorkerJob {
   real: boolean;
   /** 本轮使用的模型；null = 未显式指定，交由 CLI 平台默认档 */
   model?: string | null;
+  /** 本轮实际组合的插件（可选字段，兼容 M7 时期的历史执行记录） */
+  harness?: string;
+  provider?: string;
   facts: number[];
 }
 
@@ -481,6 +533,10 @@ export interface LoopWorkerStatus {
   reason: string;
   /** 当前生效模型（显式配置值；null = CLI 平台默认档） */
   model?: string | null;
+  /** 当前生效的插件组合 */
+  harness?: string;
+  provider?: string;
+  protocol?: LoopProviderProtocol;
   /** 已累计执行的轮次数 */
   totalExecuted: number;
   lastTickAt?: string;

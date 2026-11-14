@@ -96,54 +96,102 @@ JWT_SECRET='<≥32 位随机串>' node --import tsx/esm frontend/server.mjs
 `server.mjs` 会读取 `PORT` 环境变量并绑定 `0.0.0.0`，可直接交给平台发布。
 `build:app` / `build-deploy` 生成自包含部署单元的用法见 [docs/07](./docs/07-本地部署与去平台化.md)。
 
-### 真实 Agent 自动执行器（M7）
+### 真实 Agent 自动执行器（M7 / M8 双层插件）
 
-事件命中规则后产生的轮次**不需要人工点按钮**：常驻执行器会自动领走，调用真实 Agent
-执行并回写真回执，遇到拿不准的事才发卡片找你拍板，回答后自动续跑。
+事件命中规则后产生的轮次**不需要人工点按钮**：常驻执行器自动领走、调用真实 Agent
+执行并回写真回执，拿不准才发卡片找人拍板。
 
-两种真实模型通道，都不需要项目自带 API Key：
+M8 把「怎么跑」和「模型从哪来」拆成两个**正交、可插拔、可自由组合**的插件层：
 
-| 模式 | 说明 | 配置 |
+- **Harness（Agent 运行时）**：谁跑这一轮 agent 循环、用什么 headless 参数、消费哪种模型协议。
+- **Provider（模型供应商）**：模型服务来自哪家、提供哪些协议端点、默认模型、要不要 Key。
+- **协议**：二者唯一的耦合契约。组合器 `buildExecution()` 校验协议兼容、CLI 是否安装、
+  Key 是否配齐；任一不满足就判「不可用」并给出原因，**绝不降级成模拟成功**。
+
+#### Harness 插件（可替换）
+
+| id | 运行时 | 协议 | 本机安装 | 说明 |
+|---|---|---|---|---|
+| `codebuddy` | CodeBuddy CLI | 平台登录态 | 已预装 | 默认组合，无需 Key，走平台 CLI 登录态 |
+| `claude-code` | `claude -p` | Anthropic Messages | `npm i -g @anthropic-ai/claude-code` | `--bare` + `dontAsk` + 只读工具 |
+| `codex` | `codex exec` | OpenAI Chat | `npm i -g @openai/codex` | 隔离目录写临时 `config.toml`（`CODEX_HOME`），不污染 `~/.codex` |
+| `gemini-cli` | `gemini -p -y` | Google generateContent | `npm i -g @google/gemini-cli` | 需原生协议端点 |
+| `http-direct` | HTTP 直连 `/chat/completions` | OpenAI Chat | 无需安装 | **配好任意一家的 Key 就能立刻真跑** |
+
+#### Provider 插件（可替换）
+
+| id | 供应商 | 提供的协议端点 | 需要 Key |
+|---|---|---|---|
+| `platform` | 平台默认（CLI 登录态） | 平台登录态 | 否 |
+| `openrouter` | OpenRouter | OpenAI | 是 |
+| `deepseek` | DeepSeek | OpenAI + Anthropic | 是 |
+| `kimi` | Kimi / Moonshot | OpenAI + Anthropic | 是 |
+| `glm` | GLM / 智谱 Z.ai | OpenAI + Anthropic | 是 |
+| `custom` | 自定义兼容网关 | OpenAI / Anthropic / Google（自选） | 可选 |
+
+各家默认端点写在 `backend/lib/loop/providers.ts`，**只是开箱可填的默认值**——供应商随时
+可能改路径和模型名，生产使用请在面板「连接设置」里覆盖为官方文档的当前值。
+
+#### 协议兼容矩阵
+
+| Harness | 需要的协议 | 可直接组合的 Provider |
 |---|---|---|
-| `cli`（默认） | spawn 本机**已登录**的命令行 Agent（默认 `codebuddy -p`），模型由平台 CLI 的默认档决定，凭据算在你自己账号下 | `LOOP_WORKER_MODE=cli` |
-| `gateway` | 走 OpenAI 兼容 `/chat/completions`，用你自己的 Key 与模型 | `AI_GATEWAY_API_KEY` / `AI_GATEWAY_BASE_URL` / `AI_GATEWAY_MODEL` |
-| `off` | 停自动执行（仍可手动「立即执行」） | `LOOP_WORKER_MODE=off` |
+| `codebuddy` | 平台登录态 | `platform` |
+| `claude-code` | Anthropic | `deepseek` / `kimi` / `glm` / `custom` |
+| `codex` | OpenAI | `openrouter` / `deepseek` / `kimi` / `glm` / `custom` |
+| `gemini-cli` | Google | `custom`（填 Google 原生协议端点） |
+| `http-direct` | OpenAI | `openrouter` / `deepseek` / `kimi` / `glm` / `custom` |
 
-**模型到底用的哪个**：`GET /api/loop/worker/status` 返回 `model` 字段，总览页「Agent 执行器」
-面板直接显示。`cli` 模式下若不显式指定，CLI 用平台默认档（本环境实测 `hy4free`，
-可在 CLI 日志/trace 里核对 `"model":"hy4free"`）；设置 `LOOP_WORKER_MODEL` 后会把
-`--model <id>` 透传给 CLI，此时每轮执行记录都会带上确切模型名。`gateway` 模式则由
-`AI_GATEWAY_MODEL` 指定（缺省 `hy4free`）。**模型是真的，但 `cli` 模式的模型入口是平台
-CLI 的登录态，不是项目自建的 API 通道**——要完全用自己账号的模型，走 `gateway`。
-`gateway` 未配齐 Key/BaseURL 时状态接口会明确报「不可用」，不会静默失败。
+例如 `claude-code × deepseek` 会自动注入 `ANTHROPIC_BASE_URL=https://api.deepseek.com/anthropic`
++ `ANTHROPIC_AUTH_TOKEN` + `ANTHROPIC_MODEL`；`http-direct × glm` 只需填 GLM 的 Key，不用装任何 CLI。
+**当前线上默认仍是 `codebuddy × platform`**（唯一已验证、无需任何 Key 的组合）；其余组合的
+CLI 未安装 / Key 未配置，面板会如实标「未安装 / 不可用」，不会假装在线。
 
-常用环境变量（均可写在 `frontend/.env`，该文件被 `.gitignore` 忽略）：
+#### 配置
+
+面板「Agent 执行器」里两个下拉分别选 Harness / Provider，「连接设置」填 API Key /
+Base URL / 模型 ID / 协议（仅自定义网关需要）。Key 只提交、不回显、不入库，独立存服务端 KV；
+切换供应商会自动清空旧 Key，避免误发到别家端点。
+
+部署方可用环境变量设默认组合（写在 `frontend/.env`，被 `.gitignore` 忽略）：
 
 ```
-LOOP_WORKER_MODE=cli                    # cli | gateway | off
-LOOP_WORKER_BIN=codebuddy              # 或 CLI 绝对路径
-LOOP_WORKER_MODEL=                     # 可选：显式指定 CLI 模型 ID；留空 = 平台默认档
-LOOP_WORKER_INTERVAL_MS=15000           # 自动轮询间隔
-LOOP_WORKER_TIMEOUT_MS=120000           # 单轮 Agent 超时
-LOOP_WORKER_MAX_PER_TICK=1              # 每轮最多执行几个轮次
-LOOP_WORKER_AUTO=1                     # 0 = 关自动轮询
-LOOP_WORKER_DISABLE=1                  # 完全不加载执行器
+LOOP_WORKER_HARNESS=codebuddy          # harness id
+LOOP_WORKER_PROVIDER=platform          # provider id
+LOOP_WORKER_BASE_URL=                  # 覆盖供应商默认端点
+LOOP_WORKER_MODEL=                     # 显式模型 ID；留空 = 注册表 / 平台默认档
+LOOP_WORKER_MODE=cli                   # 兼容别名：cli | gateway | off（仅 off 有执行语义）
+LOOP_WORKER_BIN=codebuddy
+LOOP_WORKER_INTERVAL_MS=15000
+LOOP_WORKER_TIMEOUT_MS=120000
+LOOP_WORKER_MAX_PER_TICK=1
+LOOP_WORKER_AUTO=1
+# 也可把 Key 放部署环境，省去在面板填写：
+# OPENROUTER_API_KEY= / DEEPSEEK_API_KEY= / MOONSHOT_API_KEY= / ZHIPU_API_KEY=
+# 旧 gateway 配置的 AI_GATEWAY_API_KEY / AI_GATEWAY_BASE_URL / AI_GATEWAY_MODEL 仍兼容
 ```
 
-`LOOP_WORKER_MODEL` 与 `bin` / `timeoutMs` / `intervalMs` 一样由**部署方管控**，
-前端用户无法修改；`/api/loop/worker/config` 仅放行 `mode`、`maxPerTick`、`auto` 三个字段。
+`bin` / `timeoutMs` / `intervalMs` 由**部署方管控**（防指向任意程序、把轮询打到 1ms）；
+`harness` / `provider` / `protocol` / `baseUrl` / `model` / `apiKey` / `auto` / `mode` 可在面板配置。
+`LOOP_WORKER_MODE=gateway` 会自动派生为 `http-direct × custom` 并沿用 `AI_GATEWAY_*`，老部署零改动。
 
-执行器 API：`GET /api/loop/worker/status`（在线状态 / 当前模型 / 累计执行 / 最近一轮）、
-`POST /api/loop/worker/run`（立即跑一轮）、`POST /api/loop/worker/config`（切模式 / 自动开关）。
-总览页「Agent 执行器」面板可直接操作和查看。
+执行器 API：
 
-**安全边界**（对齐参考项目「指令数据分离」）：事件正文只写进隔离目录的 `context.json`，
-提示词里只出现校验过的类型 / 编号 / 文件路径；CLI 以 `--tools Read` 只读、`--strict-mcp-config`
-隔离运行，禁止写文件、执行命令、联网；模型输出经严格白名单归一化后才写入事实日志。
-执行记录存独立 key，不侵入可重放的事实日志。
+- `GET /api/loop/worker/status` — 在线状态、当前组合、模型、累计执行、最近一轮
+- `GET /api/loop/worker/capabilities` — 两层插件清单 + 本机真实安装状态 + 各家 Key 配置状态
+- `POST /api/loop/worker/run` — 立即跑一轮
+- `POST /api/loop/worker/config` — 选组合 / 填连接 / 开关
+
+**模型到底用的哪个**：`status.model` 与每轮 `job.model` 都返回实际模型，`null` = 平台默认档
+（本环境实测 `hy4free`）。**模型是真的**，但 `codebuddy` 的入口是平台 CLI 登录态、不是项目
+自建 API 通道；要用自己账号的模型，选 `http-direct`（或装好对应 CLI）再配 Provider 的 Key。
+
+**安全边界**：事件正文只写隔离目录 `context.json`，提示词里只出现校验过的结构字段与文件路径；
+每个 harness 都收敛为只读工具、禁 MCP / 插件 / 会话持久化，第三方 CLI 给「干净环境」不带平台凭据；
+模型输出经白名单归一化后才写入事实日志；Key 不回显、不落日志、不进事实日志；执行记录存独立 key。
 
 > 注意：AI Copilot 侧栏由 `LOCAL_AI_MOCK` 控制（模拟流），与 Autoloop 执行器是两条独立链路；
-> 执行器走真实 CLI Agent，不受该开关影响。
+> 执行器走真实 Agent，不受该开关影响。
 
 ---
 

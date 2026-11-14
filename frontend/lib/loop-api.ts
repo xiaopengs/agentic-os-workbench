@@ -10,6 +10,7 @@ import type {
   Fact, LoopCard, LoopEmitResp, LoopEvent, LoopPlugin, LoopPluginToggleResp, LoopPostEventResp,
   LoopRule, LoopRuleCheckResp, LoopRunResultResp, LoopRunsResp, LoopState, LoopWhyResp,
   LoopWorkerConfig, LoopWorkerRunResp, LoopWorkerStatus,
+  LoopWorkerCapabilities, LoopWorkerConfigPatch,
 } from './loop-types';
 
 /** 外壳注入的固定 now 仅用于演示复现；正常留空由服务端取真实时间 */
@@ -79,10 +80,12 @@ export const loopApi = {
       { method: 'POST', body: reason ? { reason } : {} },
     ),
 
-  /* M7 真实 Agent 执行器 */
+  /* M7/M8 真实 Agent 执行器 */
   workerStatus: () => request<LoopWorkerStatus>('/loop/worker/status'),
+  /** 两层插件的可选项 + 本机真实安装/凭据状态 */
+  workerCapabilities: () => request<LoopWorkerCapabilities>('/loop/worker/capabilities'),
   workerRun: () => request<LoopWorkerRunResp>('/loop/worker/run', { method: 'POST', body: {} }),
-  workerConfig: (patch: { mode?: 'cli' | 'gateway' | 'off'; maxPerTick?: number; auto?: boolean }) =>
+  workerConfig: (patch: LoopWorkerConfigPatch) =>
     request<{ config: LoopWorkerConfig; status: LoopWorkerStatus }>('/loop/worker/config', { method: 'POST', body: patch }),
 
   /* 时钟 / 插件 */

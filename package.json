@@ -18,12 +18,13 @@
     "test:decision-integration": "node tests/decision-loop-integration.mjs",
     "test:unit-boundaries": "tsx --test tests/unit-boundaries.test.ts",
     "test:platform": "tsx tests/platform-smoke.ts",
-    "test:all": "npm run test:api && npm run test:unit-boundaries && npm run test:loop-worker && npm run test:platform && npm run test:loop-kernel && npm run test:loop-api && npm run test:decision-kernel && npm run test:decision-api && npm run typecheck:backend",
+    "test:all": "npm run test:api && npm run test:unit-boundaries && npm run test:loop-worker && npm run test:loop-plugins && npm run test:platform && npm run test:loop-kernel && npm run test:loop-api && npm run test:decision-kernel && npm run test:decision-api && npm run typecheck:backend",
     "test:loop-ui": "node tests/loop-ui-viewports.mjs",
     "test:e2e": "node tests/e2e.mjs",
     "build:deploy": "node scripts/build-deploy.mjs",
     "build:app": "node scripts/build-app.mjs",
     "test:loop-worker": "tsx --test tests/loop-worker.test.ts",
+  "test:loop-plugins": "tsx --test tests/loop-plugins.test.ts",
     "test:loop-worker-e2e": "node tests/loop-worker-e2e.mjs"
   },
   "dependencies": {

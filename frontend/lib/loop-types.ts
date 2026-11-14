@@ -245,17 +245,55 @@ export interface LoopRunResultResp {
   facts: number[];
 }
 
-/* ── M7 · 真实 Agent 执行器（镜像 shared/loop.ts）──────────── */
+/* ── M7/M8 · 真实 Agent 执行器（镜像 shared/loop.ts）────────── */
 export type LoopWorkerMode = 'cli' | 'gateway' | 'off';
+export type LoopProviderProtocol = 'platform' | 'anthropic' | 'openai' | 'google';
+
+export interface LoopHarnessCapability {
+  id: string;
+  label: string;
+  protocol: LoopProviderProtocol;
+  installed: boolean;
+  version?: string;
+  reason: string;
+  installHint?: string;
+  docs?: string;
+  note?: string;
+}
+export interface LoopProviderCapability {
+  id: string;
+  label: string;
+  protocols: LoopProviderProtocol[];
+  endpoints: Partial<Record<LoopProviderProtocol, string>>;
+  defaultModels: Partial<Record<LoopProviderProtocol, string>>;
+  requiresKey: boolean;
+  hasKey: boolean;
+  keyEnv?: string;
+  docs?: string;
+  note?: string;
+}
+export interface LoopWorkerCapabilities {
+  harnesses: LoopHarnessCapability[];
+  providers: LoopProviderCapability[];
+  protocols: Array<{ id: LoopProviderProtocol; label: string }>;
+}
+
 export interface LoopWorkerConfig {
   mode: LoopWorkerMode;
+  /** Agent 运行时插件 id */
+  harness: string;
+  /** 模型供应商插件 id */
+  provider: string;
+  protocol?: LoopProviderProtocol;
+  baseUrl?: string;
+  model?: string;
+  /** 只回显是否已配置 Key，值永不返回前端 */
+  hasKey: boolean;
   maxPerTick: number;
   timeoutMs: number;
   auto: boolean;
   bin: string;
   intervalMs: number;
-  /** CLI 模型 ID（可选）；未设置 = 平台默认档 */
-  model?: string;
 }
 export interface LoopWorkerJob {
   runId: string;
@@ -272,6 +310,8 @@ export interface LoopWorkerJob {
   real: boolean;
   /** 本轮模型；null = 平台默认档 */
   model?: string | null;
+  harness?: string;
+  provider?: string;
   facts: number[];
 }
 export interface LoopWorkerStatus {
@@ -281,6 +321,9 @@ export interface LoopWorkerStatus {
   reason: string;
   /** 当前生效模型；null = 平台默认档 */
   model?: string | null;
+  harness?: string;
+  provider?: string;
+  protocol?: LoopProviderProtocol;
   totalExecuted: number;
   lastTickAt?: string;
   lastJob?: LoopWorkerJob;
@@ -292,4 +335,18 @@ export interface LoopWorkerRunResp {
   queuedAfter: number;
   jobs: LoopWorkerJob[];
   busy?: boolean;
+}
+
+/** 执行器配置可写字段（Key 单独提交，永不回显） */
+export interface LoopWorkerConfigPatch {
+  mode?: LoopWorkerMode;
+  harness?: string;
+  provider?: string;
+  protocol?: LoopProviderProtocol | '';
+  baseUrl?: string;
+  model?: string;
+  apiKey?: string;
+  clearKey?: boolean;
+  maxPerTick?: number;
+  auto?: boolean;
 }

@@ -29,15 +29,41 @@ import {
   DEFAULT_WORKER_CONFIG, RECEIPT_OUTCOMES,
   type LoopEvent, type LoopReceipt, type LoopRun, type LoopRule, type LoopView,
   type LoopWorkerConfig, type LoopWorkerJob, type LoopWorkerRunResp, type LoopWorkerStatus,
+  type LoopWorkerMode, type LoopWorkerCapabilities, type LoopProviderProtocol,
   type ReceiptAsk, type ReceiptNotice, type ReceiptOutcome,
 } from '../../../shared/loop';
 import type { Env } from '../env';
 import { getEnv } from '../env';
 import type { Repo } from '../kv';
 import { commit, readView } from './store';
+import {
+  PROVIDER_SPECS, PROTOCOL_LABEL, isProtocol, safeApiKey, safeBaseUrl, safeModelId,
+  getProviderSpec,
+} from './providers';
+import { HARNESS_SPECS, buildExecution, probeHarness } from './harnesses';
 
 const WORKER_KEY = (uid: string) => `loop:${uid}:worker`;
 const WORKER_CONFIG_KEY = (uid: string) => `loop:${uid}:worker-config`;
+/** API Key 独立存储：不进 config（config 会被完整回显给前端）、不进事实日志 */
+const WORKER_SECRET_KEY = (uid: string) => `loop:${uid}:worker-secret`;
+
+interface WorkerSecret { apiKey?: string }
+
+async function readSecret(r: Repo, uid: string): Promise<WorkerSecret> {
+  return (await r.get<WorkerSecret>(WORKER_SECRET_KEY(uid))) ?? {};
+}
+
+const VALID_HARNESS = new Set(HARNESS_SPECS.map((h) => h.id));
+const VALID_PROVIDER = new Set(PROVIDER_SPECS.map((p) => p.id));
+const validHarness = (v: unknown): v is string => typeof v === 'string' && VALID_HARNESS.has(v);
+const validProvider = (v: unknown): v is string => typeof v === 'string' && VALID_PROVIDER.has(v);
+
+/** 旧 mode 别名 → 插件组合；M8 起 mode 只有 off 仍参与执行判定 */
+function legacyCombination(mode: string | undefined): { harness: string; provider: string; protocol?: 'openai' } {
+  return mode === 'gateway'
+    ? { harness: 'http-direct', provider: 'custom', protocol: 'openai' }
+    : { harness: 'codebuddy', provider: 'platform' };
+}
 
 /* ── 配置 ───────────────────────────────────────────────────── */
 function boundedInt(raw: string | undefined, fallback: number, min: number, max: number): number {
@@ -65,17 +91,26 @@ export function gatewayModel(env: Env): string {
   return safeModel(getEnv(env, 'AI_GATEWAY_MODEL')) || 'hy4free';
 }
 
-/** 环境变量基线配置（进程级） */
+/** 环境变量基线配置（进程级，部署方管控） */
 export function envWorkerConfig(env: Env): LoopWorkerConfig {
   const mode = String(getEnv(env, 'LOOP_WORKER_MODE') || DEFAULT_WORKER_CONFIG.mode).toLowerCase();
+  const normalized: LoopWorkerMode = mode === 'gateway' || mode === 'off' ? mode : 'cli';
+  const combo = legacyCombination(normalized);
+  const envHarness = getEnv(env, 'LOOP_WORKER_HARNESS');
+  const envProvider = getEnv(env, 'LOOP_WORKER_PROVIDER');
   return {
-    mode: mode === 'gateway' || mode === 'off' ? mode : 'cli',
+    mode: normalized,
+    harness: validHarness(envHarness) ? envHarness : combo.harness,
+    provider: validProvider(envProvider) ? envProvider : combo.provider,
+    ...(combo.protocol ? { protocol: combo.protocol } : {}),
+    baseUrl: safeBaseUrl(getEnv(env, 'LOOP_WORKER_BASE_URL')),
+    model: safeModelId(getEnv(env, 'LOOP_WORKER_MODEL')),
+    hasKey: false, // 由 effectiveConfig 结合 KV 凭据与环境变量补齐
     maxPerTick: boundedInt(getEnv(env, 'LOOP_WORKER_MAX_PER_TICK'), 1, 1, 5),
     timeoutMs: boundedInt(getEnv(env, 'LOOP_WORKER_TIMEOUT_MS'), 120_000, 10_000, 600_000),
     auto: String(getEnv(env, 'LOOP_WORKER_AUTO') || '1').toLowerCase() !== '0',
     bin: getEnv(env, 'LOOP_WORKER_BIN') || 'codebuddy',
     intervalMs: boundedInt(getEnv(env, 'LOOP_WORKER_INTERVAL_MS'), 15_000, 3_000, 300_000),
-    model: safeModel(getEnv(env, 'LOOP_WORKER_MODEL')),
   };
 }
 
@@ -84,36 +119,95 @@ export async function readUserConfig(r: Repo, uid: string): Promise<Partial<Loop
   return await r.get<Partial<LoopWorkerConfig>>(WORKER_CONFIG_KEY(uid));
 }
 
+function hasEnvKey(env: Env, providerId: string): boolean {
+  const spec = getProviderSpec(providerId);
+  return [spec.keyEnv, 'AI_GATEWAY_API_KEY'].some((k) => k && Boolean(getEnv(env, k)));
+}
+
 /**
- * 合并出最终生效配置：环境变量基线 + 用户覆盖。
- * 用户只允许改 mode / maxPerTick / auto；bin / timeoutMs / intervalMs / model 仍由部署方管控，
- * 避免前端把执行器指到任意程序、把轮询打到 1ms，或把模型指到未授权通道。
+ * 合并最终生效配置：环境变量基线 + 用户覆盖 + 凭据存在性。
+ * 用户可选 harness / provider / protocol / baseUrl / model / maxPerTick / auto / mode；
+ * bin / timeoutMs / intervalMs 仍由部署方管控（防指到任意程序、把轮询打到 1ms）。
+ * 老配置只有 mode：按 mode 派生默认插件组合，历史行为零变化。
  */
 export async function effectiveConfig(r: Repo, uid: string, env: Env): Promise<LoopWorkerConfig> {
   const base = envWorkerConfig(env);
   const override = await readUserConfig(r, uid);
-  if (!override) return base;
+  const secret = await readSecret(r, uid);
+  const keyReady = Boolean(safeApiKey(secret.apiKey)) || hasEnvKey(env, override?.provider ?? base.provider);
+  if (!override) return { ...base, hasKey: keyReady };
+
+  const mode: LoopWorkerMode = override.mode === 'gateway' || override.mode === 'off' || override.mode === 'cli'
+    ? override.mode : base.mode;
+  const combo = legacyCombination(mode);
   return {
     ...base,
-    mode: override.mode === 'gateway' || override.mode === 'off' || override.mode === 'cli' ? override.mode : base.mode,
+    mode,
+    harness: validHarness(override.harness) ? override.harness : combo.harness,
+    provider: validProvider(override.provider) ? override.provider : combo.provider,
+    protocol: isProtocol(override.protocol)
+      ? override.protocol : (mode === 'gateway' ? 'openai' : base.protocol),
+    baseUrl: typeof override.baseUrl === 'string' ? safeBaseUrl(override.baseUrl) : base.baseUrl,
+    model: typeof override.model === 'string' ? safeModelId(override.model) : base.model,
+    hasKey: keyReady,
     maxPerTick: typeof override.maxPerTick === 'number' && override.maxPerTick >= 1 && override.maxPerTick <= 5
       ? Math.floor(override.maxPerTick) : base.maxPerTick,
     auto: typeof override.auto === 'boolean' ? override.auto : base.auto,
-    // 显式回写：即便历史 KV 里被写入 model，也以部署方环境变量为准
-    model: base.model,
+    // bin / timeoutMs / intervalMs 显式不采纳用户覆盖
+    bin: base.bin,
+    timeoutMs: base.timeoutMs,
+    intervalMs: base.intervalMs,
   };
 }
 
-/** 更新用户配置（白名单字段），返回生效配置 */
+/** 更新用户配置（严格白名单），返回生效配置；API Key 单独存 KV 且不回显 */
 export async function saveUserConfig(
   r: Repo, uid: string, env: Env, patch: Record<string, unknown>,
 ): Promise<LoopWorkerConfig> {
   const cur = (await readUserConfig(r, uid)) ?? {};
   const next: Partial<LoopWorkerConfig> = { ...cur };
-  if (patch.mode === 'cli' || patch.mode === 'gateway' || patch.mode === 'off') next.mode = patch.mode;
+  const switchingPlugin = (typeof patch.harness === 'string' && patch.harness !== cur.harness)
+    || (typeof patch.provider === 'string' && patch.provider !== cur.provider);
+
+  // 老前端只传 mode：同步派生插件组合，避免 mode 与插件选择互相打架
+  if (patch.mode === 'cli' || patch.mode === 'gateway' || patch.mode === 'off') {
+    next.mode = patch.mode;
+    const combo = legacyCombination(patch.mode);
+    if (patch.mode !== 'off' && !validHarness(patch.harness) && !validProvider(patch.provider)) {
+      next.harness = combo.harness;
+      next.provider = combo.provider;
+      if (combo.protocol) next.protocol = combo.protocol; else delete next.protocol;
+    }
+  }
+  if (validHarness(patch.harness)) next.harness = patch.harness;
+  if (validProvider(patch.provider)) next.provider = patch.provider;
+  if (isProtocol(patch.protocol)) next.protocol = patch.protocol;
+  else if (patch.protocol === '' || patch.protocol === null || (switchingPlugin && patch.protocol === undefined)) {
+    delete next.protocol; // 换组合时清掉旧协议，交给 harness 默认
+  }
+
+  if (typeof patch.baseUrl === 'string') {
+    const v = safeBaseUrl(patch.baseUrl);
+    if (v) next.baseUrl = v; else delete next.baseUrl;
+  }
+  if (typeof patch.model === 'string') {
+    const v = safeModelId(patch.model);
+    if (v) next.model = v; else delete next.model;
+  }
   if (typeof patch.maxPerTick === 'number' && patch.maxPerTick >= 1 && patch.maxPerTick <= 5) next.maxPerTick = Math.floor(patch.maxPerTick);
   if (typeof patch.auto === 'boolean') next.auto = patch.auto;
+
+  // 凭据：切换供应商时丢弃旧 Key，避免 A 家的 Key 被误发到 B 家端点
+  const secretNext: WorkerSecret = { ...(await readSecret(r, uid)) };
+  if (typeof patch.provider === 'string' && patch.provider !== cur.provider) delete secretNext.apiKey;
+  if (typeof patch.apiKey === 'string' && patch.apiKey.trim()) {
+    const k = safeApiKey(patch.apiKey);
+    if (k) secretNext.apiKey = k;
+  }
+  if (patch.clearKey === true) delete secretNext.apiKey;
+
   await r.put(WORKER_CONFIG_KEY(uid), next);
+  await r.put(WORKER_SECRET_KEY(uid), secretNext);
   return effectiveConfig(r, uid, env);
 }
 
@@ -153,27 +247,31 @@ export function workerBusy(uid: string): boolean {
 export async function workerStatus(r: Repo, uid: string, env: Env): Promise<LoopWorkerStatus> {
   const config = await effectiveConfig(r, uid, env);
   const rec = await readStatusRecord(r, uid);
-  const gatewayReady = Boolean(getEnv(env, 'AI_GATEWAY_API_KEY') && getEnv(env, 'AI_GATEWAY_BASE_URL'));
-  // gateway 未配齐凭据时明确判为不可用，避免切过去后「看起来在线、实际每轮静默失败」
-  const probe = config.mode === 'cli'
-    ? await probeCli(config.bin)
-    : config.mode === 'gateway'
-      ? {
-          available: gatewayReady,
-          reason: gatewayReady
-            ? `AI Gateway 已就绪 · 模型 ${gatewayModel(env)}（OpenAI 兼容）`
-            : 'AI Gateway 未配置：需 AI_GATEWAY_API_KEY 与 AI_GATEWAY_BASE_URL，当前不可用',
-        }
-      : { available: true, reason: '' };
-  const model = config.mode === 'gateway' ? gatewayModel(env) : (config.model ?? null);
+  const secret = await readSecret(r, uid);
+  // 用与真实执行完全相同的组合器做「可跑性」校验：
+  // 未安装的 CLI / 未配的 Key / 协议不匹配，都会在这里如实判为不可用。
+  const plan = buildExecution({
+    harnessId: config.harness, providerId: config.provider,
+    protocolOverride: config.protocol, baseUrl: config.baseUrl, model: config.model,
+    apiKey: secret.apiKey,
+    bin: config.harness === 'codebuddy' ? config.bin : undefined, env,
+    systemPrompt: '', prompt: '', addDir: os.tmpdir(),
+  });
+  const available = config.mode === 'off' ? false : plan.ok;
+  const reason = config.mode === 'off'
+    ? '自动执行已关闭（mode=off），可在面板重新选择组合并切回自动执行'
+    : plan.ok
+      ? `${plan.harnessLabel} × ${plan.providerLabel} 已就绪（${PROTOCOL_LABEL[plan.protocol]}）`
+      : (plan.reason || '执行器不可用');
   return {
     config,
     busy: workerBusy(uid),
-    available: config.mode === 'off' ? false : probe.available,
-    reason: config.mode === 'off'
-      ? '自动执行已关闭（mode=off），可在设置中切换为真实 Agent'
-      : (probe.reason || (config.mode === 'cli' ? '本机 CLI Agent 可用' : 'AI Gateway 模式')),
-    model,
+    available,
+    reason,
+    model: plan.model,
+    harness: config.harness,
+    provider: config.provider,
+    protocol: plan.protocol,
     totalExecuted: rec.totalExecuted,
     lastTickAt: rec.lastTickAt,
     lastJob: rec.lastJob,
@@ -181,59 +279,8 @@ export async function workerStatus(r: Repo, uid: string, env: Env): Promise<Loop
   };
 }
 
-/** 探测 CLI 是否真的可用（存在且能跑），避免配置成不存在的程序时空转 */
-async function probeCli(bin: string): Promise<{ available: boolean; reason: string }> {
-  try {
-    const cli = resolveCli(bin);
-    const { code, out, err } = await runProcess(cli.bin, [...cli.prefix, '--version'], 8_000, process.cwd(), '', cli.env);
-    if (code === 0) return { available: true, reason: `${cli.label} 已就绪（真实 Agent）` };
-    return { available: false, reason: `${cli.label} --version 退出码 ${code}：${(out + err).slice(0, 120)}` };
-  } catch (e) {
-    return { available: false, reason: `找不到 ${bin}：${(e as Error).message}` };
-  }
-}
-
-/* ── CLI 解析 ───────────────────────────────────────────────
- * 线上自启动服务的子进程里，`codebuddy` 是个 `#!/usr/bin/env node` 包装脚本，
- * PATH 可能解析到系统自带的 Node 18（CLI 要求 ≥18.20.8，会直接卡住/报认证失败）。
- * 因此不执行包装脚本，改为「显式 nvm 的 node + CLI 的真实 js 入口」，
- * 并把 nvm bin 目录前置到 PATH，保证任何子进程内 `node` 都指向 v22。
- * ------------------------------------------------------------ */
-interface CliInvocation { bin: string; prefix: string[]; env: Record<string, string | undefined>; label: string }
-
-function resolveCli(bin: string): CliInvocation {
-  const nvmBin = '/root/.nvm/versions/node/v22.13.1/bin';
-  const nodePath = path.join(nvmBin, 'node');
-  const cliJs = '/root/.nvm/versions/node/v22.13.1/lib/node_modules/@tencent-ai/codebuddy-code/bin/codebuddy';
-
-  // 关键：不要全量继承服务进程环境。服务由自启动时带了大量 CODEBUDDY_* / MCP /
-  // 会话同步变量，CLI 继承后会 fork 插件子进程、争用连接，实测会挂起十几分钟不返回。
-  // 这里只放行「认证 + 运行时」必需项，并显式禁用 MCP/自动记忆，让每轮都是干净的一次性进程。
-  const base = process.env;
-  const passthrough: Record<string, string | undefined> = {};
-  for (const [k, v] of Object.entries(base)) {
-    if (k.startsWith('ACC_PRODUCT_CONFIG') || k.startsWith('X_IDE_SPACE')
-      || k === 'X_IDE_AUTH_PROXY' || k === 'HOME' || k === 'LANG' || k === 'LC_ALL'
-      || k === 'NODE_ENV' || k === 'ACC_USER_ID') {
-      passthrough[k] = v;
-    }
-  }
-  const env: Record<string, string | undefined> = {
-    ...passthrough,
-    PATH: `${nvmBin}:${base.PATH || ''}`,
-    CODEBUDDY_INTERNET_ENVIRONMENT: 'internal',
-    CODEBUDDY_FORCE_HEADLESS_BUNDLE: '1',
-    CODEBUDDY_DISABLE_AUTO_MEMORY: '1',
-    CODEBUDDY_MCP_CONFIG: '',       // 不加载任何 MCP 插件，避免派生子进程
-    CODEBUDDY_DISABLE_CRON: '1',
-  };
-
-  // bin 指向已知 CLI 包装脚本（默认或显式配置）时，走显式 node 调用
-  if ((bin === 'codebuddy' || bin.endsWith('/bin/codebuddy')) && existsSync(nodePath) && existsSync(cliJs)) {
-    return { bin: nodePath, prefix: [cliJs], env, label: `${bin}（隔离环境 + node v22）` };
-  }
-  return { bin, prefix: [], env, label: bin };
-}
+/* CLI 解析、环境隔离与安装探测已统一收敛到 harnesses.ts
+ * （resolveInvocation / harnessInstalled / probeHarness），此处不再重复实现。 */
 
 /* ── 进程调用（零依赖，超时强杀）───────────────────────────── */
 function runProcess(
@@ -413,9 +460,8 @@ async function executeOne(
   const t0 = Date.now();
   const job: LoopWorkerJob = {
     runId: run.id, rule: run.rule, agent: run.agent, mode: config.mode,
-    status: 'running', startedAt, real: config.mode !== 'off',
-    model: config.mode === 'gateway' ? gatewayModel(env) : (config.model ?? null),
-    facts: [],
+    harness: config.harness, provider: config.provider,
+    status: 'running', startedAt, real: false, model: null, facts: [],
   };
 
   const rule = view.rules[run.rule];
@@ -437,22 +483,40 @@ async function executeOne(
       run: { id: run.id, agent: run.agent, hops: run.hops },
     }, null, 2), 'utf8');
 
+    // 组合器产出「可执行计划」：协议兼容、安装状态、凭据、端点、参数模板都在此定稿。
+    // plan.ok=false 时本轮直接结案并给出明确原因，绝不降级成模拟成功。
+    const secret = await readSecret(r, uid);
+    const plan = buildExecution({
+      harnessId: config.harness, providerId: config.provider,
+      protocolOverride: config.protocol, baseUrl: config.baseUrl, model: config.model,
+      apiKey: secret.apiKey,
+    bin: config.harness === 'codebuddy' ? config.bin : undefined, env,
+      systemPrompt: SYSTEM_PROMPT,
+      prompt: buildPrompt({ run, rule, events, contextPath, allowedTypes }),
+      addDir: dir,
+    });
+    job.harness = plan.harness;
+    job.provider = plan.provider;
+    job.model = plan.model;
+
     let text = '';
-    if (config.mode === 'cli') {
-      const prompt = buildPrompt({ run, rule, events, contextPath, allowedTypes });
-      const cli = resolveCli(config.bin);
-      // 工具集收敛为只读：不开放 Bash/Write/Edit，也不使用 -y 全放行。
-      // 对齐「指令数据分离」：Agent 只能读隔离目录里的资料文件，无法碰到项目代码或执行命令。
-      // --strict-mcp-config + 空 mcp-config + 空 setting-sources：杜绝 CLI 加载用户级 MCP/插件
-      // 后 fork 出子进程（实测该子进程在服务进程里会挂住，导致 CLI 永不返回、每轮超时）。
-      const res = await runProcess(cli.bin, [
-        ...cli.prefix,
-        '-p', ...modelCliArgs(config.model), '--tools', 'Read', '--add-dir', dir,
-        '--strict-mcp-config', '--mcp-config', '{}', '--setting-sources', '',
-        '--no-session-persistence',
-        '--system-prompt', SYSTEM_PROMPT,
-        prompt,
-      ], config.timeoutMs, dir, '', cli.env);
+    if (!plan.ok) {
+      job.status = 'failed';
+      job.error = plan.reason || '当前插件组合不可执行';
+    } else if (plan.kind === 'http' && plan.http) {
+      const res = await callHttp(plan.http, config.timeoutMs);
+      text = res.text;
+      if (res.error) { job.status = 'failed'; job.error = res.error; }
+      else job.real = true;
+    } else if (plan.kind === 'cli') {
+      // 某些 harness（codex）需要在隔离目录里放一份临时配置，随目录一起销毁
+      for (const f of plan.files ?? []) {
+        await writeFile(path.join(dir, f.name), f.content, 'utf8');
+      }
+      const res = await runProcess(
+        plan.bin!, [...(plan.prefix ?? []), ...(plan.argv ?? [])],
+        config.timeoutMs, dir, '', plan.env,
+      );
       if (res.code === null) {
         job.status = 'timeout';
         job.error = `Agent 超时（>${config.timeoutMs}ms）`;
@@ -463,11 +527,6 @@ async function executeOne(
         text = res.out;
         job.real = true;
       }
-    } else if (config.mode === 'gateway') {
-      const res = await callGateway(env, buildPrompt({ run, rule, events, contextPath, allowedTypes }), config.timeoutMs);
-      text = res.text;
-      if (res.error) { job.status = 'failed'; job.error = res.error; }
-      else job.real = true;
     }
 
     // ② 归一化回执；解析失败交 cancelled 回执（带 notice），绝不把轮次挂在 claimed。
@@ -505,33 +564,37 @@ async function executeOne(
   return job;
 }
 
-/* ── Gateway 模式（OpenAI 兼容 /chat/completions，零 SDK）───── */
-async function callGateway(env: Env, prompt: string, timeoutMs: number): Promise<{ text: string; error?: string }> {
-  const apiKey = getEnv(env, 'AI_GATEWAY_API_KEY');
-  let base = String(getEnv(env, 'AI_GATEWAY_BASE_URL') || '').replace(/\/+$/, '');
-  if (!apiKey || !base) return { text: '', error: 'AI_GATEWAY_API_KEY / AI_GATEWAY_BASE_URL 未配置' };
-  if (!/\/v\d+$/.test(base)) base += '/v1';
-  const model = getEnv(env, 'AI_GATEWAY_MODEL') || 'hy4free';
+/* ── HTTP 直连 harness（OpenAI 兼容 /chat/completions，零 SDK）──
+ * 端点 / Key / 模型全部来自组合器，不再写死 AI_GATEWAY_*；
+ * 无 Key（本地网关、Ollama 等）时不带 Authorization 头。
+ * ------------------------------------------------------------ */
+async function callHttp(
+  cfg: { baseUrl: string; apiKey: string; model: string; systemPrompt: string; prompt: string },
+  timeoutMs: number,
+): Promise<{ text: string; error?: string }> {
+  const base = cfg.baseUrl.replace(/\/+$/, '');
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), timeoutMs);
   try {
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (cfg.apiKey) headers.Authorization = `Bearer ${cfg.apiKey}`;
     const res = await fetch(`${base}/chat/completions`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
+      headers,
       body: JSON.stringify({
-        model, stream: false,
+        model: cfg.model, stream: false,
         messages: [
-          { role: 'system', content: SYSTEM_PROMPT },
-          { role: 'user', content: prompt },
+          { role: 'system', content: cfg.systemPrompt },
+          { role: 'user', content: cfg.prompt },
         ],
       }),
       signal: ctrl.signal,
     });
-    if (!res.ok) return { text: '', error: `Gateway 返回 ${res.status}：${(await res.text()).slice(0, 200)}` };
+    if (!res.ok) return { text: '', error: `模型服务返回 ${res.status}：${(await res.text()).slice(0, 200)}` };
     const data = await res.json() as { choices?: Array<{ message?: { content?: string } }> };
     return { text: data.choices?.[0]?.message?.content ?? '' };
   } catch (e) {
-    return { text: '', error: `Gateway 调用失败：${(e as Error).message}` };
+    return { text: '', error: `模型服务调用失败：${(e as Error).message}` };
   } finally {
     clearTimeout(timer);
   }
@@ -544,7 +607,19 @@ export async function runWorkerTick(r: Repo, uid: string, env: Env, now: string,
   const queued = Object.values(view.runs).filter((run) => run.state === 'queued');
   const queuedBefore = queued.length;
 
-  if ((!force && config.mode === 'off') || queued.length === 0 || busyUsers.has(uid)) {
+  // 组合不可跑（CLI 未安装 / 缺 Key / 协议不匹配）时，自动调度直接空转：
+  // 不领取、不结案，避免把排队轮次全部以 cancelled 消耗掉。
+  // 手动「立即执行」仍可强行跑一轮，从而看到具体失败原因。
+  const secret = await readSecret(r, uid);
+  const probe = buildExecution({
+    harnessId: config.harness, providerId: config.provider,
+    protocolOverride: config.protocol, baseUrl: config.baseUrl, model: config.model,
+    apiKey: secret.apiKey,
+    bin: config.harness === 'codebuddy' ? config.bin : undefined, env,
+    systemPrompt: '', prompt: '', addDir: os.tmpdir(),
+  });
+
+  if ((!force && (config.mode === 'off' || !probe.ok)) || queued.length === 0 || busyUsers.has(uid)) {
     return { executed: 0, queuedBefore, queuedAfter: queuedBefore, jobs: [] };
   }
 
@@ -631,4 +706,49 @@ export function cliInstalled(bin: string): boolean {
   if (bin.includes('/')) return existsSync(bin);
   const dirs = String(process.env.PATH || '').split(':');
   return dirs.some((d) => existsSync(path.join(d, bin)));
+}
+
+/**
+ * 能力清单（供前端渲染两个下拉）：
+ * - harness 逐个真实探测安装状态（--version），没装就如实标未安装；
+ * - provider 只回显「有没有 Key」，绝不回显 Key 本身。
+ */
+export async function workerCapabilities(r: Repo, uid: string, env: Env): Promise<LoopWorkerCapabilities> {
+  const config = await effectiveConfig(r, uid, env);
+  const secret = await readSecret(r, uid);
+
+  const harnesses = await Promise.all(HARNESS_SPECS.map(async (h) => {
+    const probe = await probeHarness(h, h.id === 'codebuddy' ? config.bin : undefined);
+    return {
+      id: h.id,
+      label: h.label,
+      protocol: h.protocol as LoopProviderProtocol,
+      installed: probe.installed,
+      version: probe.version || undefined,
+      reason: probe.reason,
+      installHint: h.installHint,
+      docs: h.docs,
+      note: h.note,
+    };
+  }));
+
+  const providers = PROVIDER_SPECS.map((p) => ({
+    id: p.id,
+    label: p.label,
+    protocols: p.protocols as LoopProviderProtocol[],
+    endpoints: p.endpoints,
+    defaultModels: p.defaultModels,
+    requiresKey: p.requiresKey,
+    hasKey: (p.id === config.provider && Boolean(safeApiKey(secret.apiKey)))
+      || (p.keyEnv ? Boolean(getEnv(env, p.keyEnv)) : false)
+      || (p.id === 'custom' && Boolean(getEnv(env, 'AI_GATEWAY_API_KEY'))),
+    keyEnv: p.keyEnv,
+    docs: p.docs,
+    note: p.note,
+  }));
+
+  const protocols = (Object.keys(PROTOCOL_LABEL) as LoopProviderProtocol[])
+    .map((id) => ({ id, label: PROTOCOL_LABEL[id] }));
+
+  return { harnesses, providers, protocols };
 }

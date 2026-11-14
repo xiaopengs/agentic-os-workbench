@@ -97,8 +97,9 @@ route('POST', '/loop/tick', loop.postTick);
 route('POST', '/loop/plugins', loop.postPlugin);
 route('POST', '/loop/plugins/:id/disable', loop.postPluginDisable);
 route('POST', '/loop/plugins/:id/enable', loop.postPluginEnable);
-/* M7 真实 Agent 执行器：状态 / 立即执行 / 配置 */
+/* M7/M8 真实 Agent 执行器：状态 / 能力清单 / 立即执行 / 配置 */
 route('GET', '/loop/worker/status', loop.getWorkerStatus);
+route('GET', '/loop/worker/capabilities', loop.getWorkerCapabilities);
 route('POST', '/loop/worker/run', loop.postWorkerRun);
 route('POST', '/loop/worker/config', loop.postWorkerConfig);
 

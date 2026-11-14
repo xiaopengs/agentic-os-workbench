@@ -17,7 +17,7 @@ import { commit, loopFacts, loopState, loopWhy, readView } from '../lib/loop/sto
 import { ensureLoopSeeded } from '../lib/loop/seed';
 import { validateEvent, validateRule, matchRules, decide } from '../lib/loop/kernel';
 import { badRequest, conflict, forbidden, notFound, ok } from '../lib/resp';
-import { workerStatus, runWorkerTick, saveUserConfig } from '../lib/loop/worker';
+import { workerStatus, workerCapabilities, runWorkerTick, saveUserConfig } from '../lib/loop/worker';
 
 /** 外壳注入当前时间（内核绝不自己读时钟） */
 function nowOf(ctx: ApiCtx): string {
@@ -325,6 +325,12 @@ export async function postPluginDisable(ctx: ApiCtx): Promise<Response> {
 export async function getWorkerStatus(ctx: ApiCtx): Promise<Response> {
   const { r, uid } = await prepare(ctx);
   return ok(await workerStatus(r, uid, ctx.env));
+}
+
+/** 可插拔插件能力清单：harness / provider 列表 + 本机真实安装与凭据状态 */
+export async function getWorkerCapabilities(ctx: ApiCtx): Promise<Response> {
+  const { r, uid } = await prepare(ctx);
+  return ok(await workerCapabilities(r, uid, ctx.env));
 }
 
 /** 立即执行一轮：领走 queued 轮次，调用真实 Agent，回写真回执。手动触发不受 auto 开关限制。 */

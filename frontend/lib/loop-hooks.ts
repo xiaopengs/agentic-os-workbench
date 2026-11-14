@@ -11,7 +11,9 @@
 import { useSWRConfig } from 'swr';
 import { useApi } from './hooks';
 import type { SyncState } from './types';
-import type { Fact, LoopCard, LoopRunsResp, LoopState, LoopWorkerStatus } from './loop-types';
+import type {
+  Fact, LoopCard, LoopRunsResp, LoopState, LoopWorkerStatus, LoopWorkerCapabilities,
+} from './loop-types';
 
 /* ── 读 hooks（key 即 request path，SWR 自动去重）──────────── */
 
@@ -38,6 +40,11 @@ export function useLoopCards(refreshInterval = 8000) {
 /** M7 真实 Agent 执行器状态（自动轮询，展示「谁在跑、跑了什么」） */
 export function useLoopWorkerStatus(refreshInterval = 5000) {
   return useApi<LoopWorkerStatus>('/loop/worker/status', { refreshInterval });
+}
+
+/** M8 两层插件的可选项（静态列表，挂载时拉一次；写操作后由统一刷新入口失效） */
+export function useLoopWorkerCapabilities() {
+  return useApi<LoopWorkerCapabilities>('/loop/worker/capabilities', { refreshInterval: 0 });
 }
 
 /* ── 聚合：总览页各卡片共享同一份订阅（SWR 去重，不重复请求）── */
@@ -73,7 +80,10 @@ export function useLoopWorkbench(): LoopWorkbench {
 
 /* ── 写后统一刷新入口（唯一失效通道）──────────────────────── */
 /** 本模块订阅的全部 SWR key（封闭集合，写后统一失效） */
-const LOOP_KEYS = ['/loop/state', '/loop/facts', '/loop/runs', '/loop/cards', '/loop/worker/status'] as const;
+const LOOP_KEYS = [
+  '/loop/state', '/loop/facts', '/loop/runs', '/loop/cards',
+  '/loop/worker/status', '/loop/worker/capabilities',
+] as const;
 
 export function useLoopMutate() {
   const { mutate } = useSWRConfig();

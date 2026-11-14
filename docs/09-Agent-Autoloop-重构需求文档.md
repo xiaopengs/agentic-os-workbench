@@ -493,3 +493,82 @@ M1–M6 复刻了内核 + 投影 + 全套 UI，但把「领活 → Agent 干活 
 
 > 已知环境限制：沙箱 4 核 CPU 长期 load 16–20，真实模型单轮偶发需 100–120s，
 > 故线上超时设为 120s。执行器已做单飞 / 超时不重试 / 链式止损，负载恢复后会更快。
+
+---
+
+## M8 · 双层插件化（Provider × Harness，模型与运行时均可替换）
+
+### 需求与判断
+
+用户指出：模型的 provider 是一个插件、harness 也是一个插件；模型要能替换多家
+（OpenRouter / DeepSeek / Kimi / GLM 等），harness 也要能选择（Claude / Codex / Gemini 等）。
+核对 M7 现状：`mode: cli|gateway|off` 把「谁在跑」和「模型从哪来」焊死在同一个枚举里，
+`cli` 固定 spawn codebuddy、`gateway` 固定 OpenAI 兼容补全，无法自由组合。
+
+结论：把执行拆成两个正交插件层，用一个组合器在运行时按协议契约拼装。
+
+### 架构
+
+- `backend/lib/loop/providers.ts`：Provider 插件注册表，6 家（platform / openrouter /
+  deepseek / kimi / glm / custom），声明协议、默认端点、示例模型、Key 需求与环境变量兜底。
+- `backend/lib/loop/harnesses.ts`：Harness 插件注册表，5 个（codebuddy / claude-code /
+  codex / gemini-cli / http-direct），声明消费协议、headless 参数模板、环境隔离与安装探测；
+  `buildExecution()` 是纯函数组合器。
+- `worker.ts` 只负责调度与 IO：拿计划 → spawn / fetch → 回执 → 内核。调用链保持单向 DAG。
+
+### 协议兼容矩阵（真实约束，不是示意）
+
+各家端点经外网核对（2026-11-14）：Claude Code 吃 `ANTHROPIC_BASE_URL` +
+`ANTHROPIC_AUTH_TOKEN` + `ANTHROPIC_MODEL`（Anthropic Messages 协议，DeepSeek/Kimi/GLM 官方
+均提供 `/anthropic` 端点）；Codex 吃 `config.toml` + `OPENAI_API_KEY`（OpenAI 协议）；
+Gemini CLI 吃 `GOOGLE_GEMINI_BASE_URL` + `GEMINI_API_KEY`（Google 原生协议）。
+因此协议不匹配必须显式拒绝，不能硬跑。
+
+| Harness | 协议 | 可组合 Provider |
+|---|---|---|
+| codebuddy | 平台登录态 | platform |
+| claude-code | Anthropic | deepseek / kimi / glm / custom |
+| codex | OpenAI | openrouter / deepseek / kimi / glm / custom |
+| gemini-cli | Google | custom |
+| http-direct | OpenAI | openrouter / deepseek / kimi / glm / custom |
+
+`http-direct` 是「无需安装 CLI」的落地路径：任意一家配好 Key 即可真跑。
+
+### 真实参数模板（非臆造）
+
+| harness | headless 参数 | 注入的环境变量 |
+|---|---|---|
+| claude-code | `-p --bare --output-format text --permission-mode dontAsk --allowedTools Read --disallowedTools Write,Edit,Bash --append-system-prompt ... --no-session-persistence --model` | `ANTHROPIC_BASE_URL` / `ANTHROPIC_AUTH_TOKEN` / `ANTHROPIC_API_KEY` / `ANTHROPIC_MODEL` + 三个 `DEFAULT_*` |
+| codex | `exec --skip-git-repo-check --sandbox read-only --model` | `CODEX_HOME`（隔离目录）+ `OPENAI_API_KEY`，临时 `config.toml` 写 `base_url` / `wire_api=chat` |
+| gemini-cli | `-p -y` | `GOOGLE_GEMINI_BASE_URL` / `GEMINI_API_KEY` / `GEMINI_MODEL` |
+| codebuddy | 沿用 M7 的 `--strict-mcp-config` 只读隔离 | 平台认证精简环境 |
+| http-direct | 直接 `POST {base}/chat/completions` | 无（Key 走 Authorization 头，可为空） |
+
+### 关键决策
+
+1. **未安装 / 缺 Key / 协议不匹配 → 判不可用，不模拟成功**：`workerStatus` 与
+   `runWorkerTick` 用同一个 `buildExecution()` 做校验；自动调度在不可跑时直接空转，
+   **不领取、不结案**，避免把排队轮次全部以 `cancelled` 消耗掉。
+2. **凭据隔离**：Key 存独立 `loop:{uid}:worker-secret`，`config` 只回显 `hasKey`；切换
+   provider 自动清空旧 Key；`safeBaseUrl` / `safeApiKey` / `safeModelId` 防注入。
+3. **向后兼容**：`mode` 保留为别名，`cli` → codebuddy×platform，`gateway` → http-direct×custom
+   并沿用 `AI_GATEWAY_*`；老配置零改动。历史 job 记录缺 harness/provider 字段不崩。
+4. **第三方 CLI 给干净环境**：不带平台 `ACC_PRODUCT_CONFIG_*`，避免凭据串扰与插件子进程。
+5. **能力清单真实探测**：`GET /loop/worker/capabilities` 逐个跑 `--version`（结果缓存 60s），
+   没装就如实标未安装。
+
+### 前端
+
+「Agent 执行器」面板改为两个独立下拉 + 连接设置（Key / BaseURL / 模型 / 协议），
+实时显示协议兼容、安装状态、Key 状态与每轮实际组合；沿用项目既有 `.card/.chip/.run-btn` 风格。
+
+### 验证
+
+- 新增 `tests/loop-plugins.test.ts` 12 项全绿（注册表 / 协议矩阵 / 参数模板真实性 /
+  防注入 / 凭据隔离 / 旧 gateway 兼容）；`test:loop-worker` 12/12；`test:all` 全绿；
+  后端 tsc、Next build 12 页通过。
+- 当前线上默认组合 `codebuddy × platform` 保持已验证的真实闭环不动；其余组合因本机
+  未安装 claude/codex/gemini、也没有各家 Key，如实显示「未安装 / 不可用」，未做模拟。
+
+> 待用户提供任一家的 Key 或安装对应 CLI 后，可直接在面板切换组合并跑一轮真实验证；
+> 端点与示例模型只是默认值，请以各家官方文档当前值为准。

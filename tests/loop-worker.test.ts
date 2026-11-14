@@ -164,7 +164,7 @@ test('⑩ 全局单飞：Agent 执行中再次 tick 不重复领活（不产生 
   assert.equal(Object.values(after.runs).filter((x) => x.state === 'queued').length, 1, '轮次应完好留在 queued');
 });
 
-test('⑪ 模型配置：默认交给平台档；显式配置才透传 --model，且前端不可私改', async () => {
+test('⑪ 模型配置：默认交给平台档；M8 起用户可选模型，bin/超时/间隔仍部署方管控', async () => {
   assert.equal(envWorkerConfig({}).model, undefined, '未配置时不得硬编码模型名');
 
   const pinned = envWorkerConfig({ LOOP_WORKER_MODEL: 'hy4std' });
@@ -182,9 +182,14 @@ test('⑪ 模型配置：默认交给平台档；显式配置才透传 --model�
   const env = { ...process.env, LOCAL_STORE: 'file', LOCAL_STORE_PATH: '/tmp/worker-model-test.json', LOOP_WORKER_MODEL: 'hy4std' };
   const r = await repo(env);
   const uid = 'usr_workermodel';
-  await saveUserConfig(r, uid, env, { model: 'deepseek-v4-pro' });
+  await saveUserConfig(r, uid, env, {
+    model: 'deepseek-v4-pro',
+    bin: '/tmp/evil-agent', timeoutMs: 1, intervalMs: 1,
+  });
   const cfg = await effectiveConfig(r, uid, env);
-  assert.equal(cfg.model, 'hy4std', '部署方配置优先，前端不能把模型指到别的通道');
+  assert.equal(cfg.model, 'deepseek-v4-pro', 'M8 起用户可在白名单内自由选择模型 ID');
+  assert.notEqual(cfg.bin, '/tmp/evil-agent', 'bin 仍由部署方管控，前端不能指向任意程序');
+  assert.ok(cfg.timeoutMs >= 10_000 && cfg.intervalMs >= 3_000, '超时/间隔仍由部署方钳制');
 });
 
 test('⑫ gateway 未配齐凭据时状态接口明确判为不可用（不静默失败）', async () => {
@@ -195,9 +200,9 @@ test('⑫ gateway 未配齐凭据时状态接口明确判为不可用（不静�
   const r = await repo(env);
   const s = await workerStatus(r, 'usr_workergw', env);
   assert.equal(s.config.mode, 'gateway');
-  assert.equal(s.available, false);
-  assert.match(s.reason, /AI_GATEWAY/);
-  assert.equal(s.model, 'hy4free');
+  assert.equal(s.available, false, '缺端点/凭据时必须判为不可用，不能静默失败');
+  assert.match(s.reason, /Base URL|API Key|未安装|不可用/);
+  assert.equal(s.model, null, '组合不可用时不臆造模型名');
 
   const ready = await workerStatus(r, 'usr_workergw2', {
     ...env, AI_GATEWAY_API_KEY: 'test-key', AI_GATEWAY_BASE_URL: 'https://example.invalid/v1', AI_GATEWAY_MODEL: 'glm-5.3',
