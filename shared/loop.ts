@@ -24,8 +24,14 @@ export const LIMITS = {
 
 /** 事件 type 合法格式：小写字母开头，可用 x.* 通配 */
 export const EVENT_TYPE_RE = /^(\*|[a-z][a-z0-9_.-]{0,63}(\.\*)?)$/;
-/** subject 只允许标识符字符（会进提示词，必须收窄） */
-export const SUBJECT_RE = /^[A-Za-z0-9#._:/@-]+$/;
+/**
+ * subject 允许任意「可见文字」：中文、空格、标点、标识符均可（事项本来就是人写的标题）。
+ * 只拒绝控制字符与不可见格式符 —— 它们才是注入与结构破坏的载体：
+ *  - C0/C1 控制符 \\u0000-\\u001F / \\u007F-\\u009F：NUL 会破坏 lane 的 \\u0000 分隔，换行可伪造提示词指令行
+ *  - 零宽 / 双向 / 不可见格式符 \\u200B-\\u200F \\u202A-\\u202E \\u2060-\\u2064 \\u2066-\\u2069 \\uFEFF：可藏入不可见指令
+ * 长度上限见 LIMITS.subject；显示走 React 文本节点，天然转义。
+ */
+export const SUBJECT_RE = /^[^\u0000-\u001F\u007F-\u009F\u200B-\u200F\u202A-\u202E\u2060-\u2064\u2066-\u2069\uFEFF]+$/;
 /** link 只允许纯 ASCII 可打印字符 */
 export const LINK_RE = /^[\x20-\x7E]+$/;
 
@@ -407,9 +413,81 @@ export const LOOP_API = {
   CARD_RESOLVE: (id: string) => `/loop/cards/${encodeURIComponent(id)}/resolve`,
   FACTS: '/loop/facts',
   TICK: '/loop/tick',
+  /* M7 真实 Agent 执行器 */
+  WORKER_STATUS: '/loop/worker/status',
+  WORKER_RUN: '/loop/worker/run',
+  WORKER_CONFIG: '/loop/worker/config',
   PLUGIN_DISABLE: (id: string) => `/loop/plugins/${encodeURIComponent(id)}/disable`,
   PLUGIN_ENABLE: (id: string) => `/loop/plugins/${encodeURIComponent(id)}/enable`,
 } as const;
+
+/* ── M7 · 真实 Agent 执行器 ────────────────────────────────────
+ * 内核是纯确定性的状态机，不认识模型；「领活 → 让 Agent 干活 → 交回执」
+ * 由外壳（worker）完成，语义对齐参考系统的 worker/ + plugins/ 分层。
+ * ------------------------------------------------------------ */
+
+/** 执行模式：cli=本机已登录 CLI Agent（默认，真实）；gateway=HTTP 模型；off=停自动执行 */
+export type LoopWorkerMode = 'cli' | 'gateway' | 'off';
+
+export interface LoopWorkerConfig {
+  mode: LoopWorkerMode;
+  /** 单轮最多执行多少个 queued 轮次（默认 1，避免一次烧太多 Token） */
+  maxPerTick: number;
+  /** 单轮 Agent 超时（毫秒，默认 120000） */
+  timeoutMs: number;
+  /** 是否自动高频轮询（默认 true；关掉则仅手动触发） */
+  auto: boolean;
+  /** CLI 可执行文件名/路径（默认 codebuddy） */
+  bin: string;
+  /** 自动轮询间隔（毫秒，默认 15000） */
+  intervalMs: number;
+}
+
+export const DEFAULT_WORKER_CONFIG: LoopWorkerConfig = {
+  mode: 'cli', maxPerTick: 1, timeoutMs: 120_000, auto: true, bin: 'codebuddy', intervalMs: 15_000,
+};
+
+/** 单次执行的记录（写入独立 key，不侵入事实日志） */
+export interface LoopWorkerJob {
+  runId: string;
+  rule: string;
+  agent: string;
+  mode: LoopWorkerMode;
+  status: 'running' | 'done' | 'failed' | 'timeout' | 'skipped';
+  startedAt: string;
+  finishedAt?: string;
+  durationMs?: number;
+  outcome?: ReceiptOutcome;
+  summary?: string;
+  error?: string;
+  /** 真实执行标记：是否确实调用了外部 Agent（非模拟） */
+  real: boolean;
+  facts: number[];
+}
+
+export interface LoopWorkerStatus {
+  config: LoopWorkerConfig;
+  /** 当前进程内是否有一个 tick 正在跑 */
+  busy: boolean;
+  /** 执行器可用性与原因（如 CLI 不存在） */
+  available: boolean;
+  reason: string;
+  /** 已累计执行的轮次数 */
+  totalExecuted: number;
+  lastTickAt?: string;
+  lastJob?: LoopWorkerJob;
+  jobs: LoopWorkerJob[];
+}
+
+/** 单次 /loop/worker/run 的返回 */
+export interface LoopWorkerRunResp {
+  executed: number;
+  queuedBefore: number;
+  queuedAfter: number;
+  jobs: LoopWorkerJob[];
+  /** 已有 Agent 正在执行，本轮让路（前端应提示稍候，而非「没有轮次」） */
+  busy?: boolean;
+}
 
 /** 内核版本：参与事实日志格式指纹，变更时触发投影重建 */
 export const LOOP_KERNEL_VERSION = 'autoloop-web-0.4.0';

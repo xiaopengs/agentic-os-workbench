@@ -17,6 +17,7 @@ import { commit, loopFacts, loopState, loopWhy, readView } from '../lib/loop/sto
 import { ensureLoopSeeded } from '../lib/loop/seed';
 import { validateEvent, validateRule, matchRules, decide } from '../lib/loop/kernel';
 import { badRequest, conflict, forbidden, notFound, ok } from '../lib/resp';
+import { workerStatus, runWorkerTick, saveUserConfig } from '../lib/loop/worker';
 
 /** 外壳注入当前时间（内核绝不自己读时钟） */
 function nowOf(ctx: ApiCtx): string {
@@ -82,6 +83,14 @@ export async function getCards(ctx: ApiCtx): Promise<Response> {
 }
 
 /* ── 事件接入 / 预演 ───────────────────────────────────────── */
+/** subject 归一化：trim 后为空视为未提供，避免把空串写进事实日志 */
+function subjectOf(body: Record<string, unknown>): string | undefined {
+  const s = body.subject;
+  if (typeof s !== 'string') return undefined;
+  const t = s.trim();
+  return t || undefined;
+}
+
 export async function postEvent(ctx: ApiCtx): Promise<Response> {
   const { r, uid, now } = await prepare(ctx);
   const body = await readJsonBody(ctx.req, ctx.raw);
@@ -93,7 +102,7 @@ export async function postEvent(ctx: ApiCtx): Promise<Response> {
   const source = typeof body.source === 'string' && body.source ? body.source : 'manual';
   const event: LoopEvent = {
     id: String(body.id), source, type: String(body.type),
-    subject: body.subject as string | undefined,
+    subject: subjectOf(body),
     summary: body.summary as string | undefined,
     detail: body.detail as string | undefined,
     link: body.link as string | undefined,
@@ -124,7 +133,7 @@ export async function postEmit(ctx: ApiCtx): Promise<Response> {
   const view = await readView(r, uid);
   const event: LoopEvent = {
     id: String(body.id), source: String(body.source ?? 'manual'), type: String(body.type),
-    subject: body.subject as string | undefined, hops: Number(body.hops ?? 0),
+    subject: subjectOf(body), hops: Number(body.hops ?? 0),
   };
   const facts = decide(view, { kind: 'event', event }, now);
   const accepted = facts.find((f) => f.kind === 'event.accepted') as
@@ -191,7 +200,7 @@ export async function postRuleRun(ctx: ApiCtx): Promise<Response> {
   const { r, uid, now } = await prepare(ctx);
   const body = await readJsonBody(ctx.req, ctx.raw);
   const { facts } = await commit(r, uid, {
-    kind: 'rule.run', name: ctx.params.name, subject: body.subject as string | undefined,
+    kind: 'rule.run', name: ctx.params.name, subject: subjectOf(body),
   }, now);
   const queued = facts.find((f) => f.kind === 'run.queued') as
     | Extract<typeof facts[number], { kind: 'run.queued' }> | undefined;
@@ -307,6 +316,30 @@ export async function postPluginDisable(ctx: ApiCtx): Promise<Response> {
   }, now);
   if (!facts.length) throw notFound('插件不存在或已停用');
   return ok({ disabled: true, id: ctx.params.id, facts: facts.map((f) => f.seq) });
+}
+
+/* ── M7 · 真实 Agent 执行器 ──────────────────────────────────
+ * 内核只负责确定性状态机；这里把「领活 → 真 Agent 执行 → 交回执」交给外壳 worker。
+ * 三个端点：状态查询 / 立即执行一轮 / 配置（模式开关、并发、自动轮询）。
+ */
+export async function getWorkerStatus(ctx: ApiCtx): Promise<Response> {
+  const { r, uid } = await prepare(ctx);
+  return ok(await workerStatus(r, uid, ctx.env));
+}
+
+/** 立即执行一轮：领走 queued 轮次，调用真实 Agent，回写真回执。手动触发不受 auto 开关限制。 */
+export async function postWorkerRun(ctx: ApiCtx): Promise<Response> {
+  const { r, uid, now } = await prepare(ctx);
+  const result = await runWorkerTick(r, uid, ctx.env, now, true);
+  return ok(result);
+}
+
+/** 更新执行器配置（白名单字段，返回生效配置） */
+export async function postWorkerConfig(ctx: ApiCtx): Promise<Response> {
+  const { r, uid } = await prepare(ctx);
+  const body = await readJsonBody(ctx.req, ctx.raw);
+  const config = await saveUserConfig(r, uid, ctx.env, body);
+  return ok({ config, status: await workerStatus(r, uid, ctx.env) });
 }
 
 /** 启用插件：内核校验是否已停用，未产出事实 → 404 */

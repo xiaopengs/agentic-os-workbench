@@ -337,10 +337,37 @@ test('loop: validateEvent 拒收指令字段（指令数据分离）', () => {
 test('loop: validateEvent 校验 id/type/subject/link/summary/detail', () => {
   assert.ok(validateEvent({ id: '', type: 'a.b' }).some((i) => i.includes('id')));
   assert.ok(validateEvent({ id: 'e', type: '有中文' }).some((i) => i.includes('type')));
-  assert.ok(validateEvent({ id: 'e', type: 'a.b', subject: 'bad subject!' }).some((i) => i.includes('subject')));
+  assert.deepEqual(validateEvent({ id: 'e', type: 'a.b', subject: 'bad subject!' }), [], '空格/标点应放行');
+  assert.ok(validateEvent({ id: 'e', type: 'a.b', subject: 'x' + String.fromCharCode(0) + 'y' })
+    .some((i) => i.includes('subject')), 'NUL 应被拒');
   assert.ok(validateEvent({ id: 'e', type: 'a.b', link: 'https://例子.com' }).some((i) => i.includes('link')));
   assert.ok(validateEvent({ id: 'e', type: 'a.b', summary: 123 }).some((i) => i.includes('summary')));
   assert.deepEqual(validateEvent({ id: 'e', type: 'a.b', link: 'https://example.com/x' }), []);
+});
+
+test('loop: subject 允许可见文字、拒绝注入载体', () => {
+  const ok = (subject: unknown) => validateEvent({ id: 'e', type: 'a.b', subject }).length === 0;
+  const bad = (subject: unknown) => validateEvent({ id: 'e', type: 'a.b', subject })
+    .some((i) => i.includes('subject'));
+  for (const s of ['Node架构设计', '架构设计 方案 v2', 'repo#128', 'a b;rm', '订单 / 支付 @ 上海', '评审：通过（P0）', '🚀 发布']) {
+    assert.ok(ok(s), `应允许可见文字：${JSON.stringify(s)}`);
+  }
+  assert.ok(ok(''), '空串视为未提供');
+  assert.ok(ok('   '), '纯空白视为未提供');
+  const invisible = [
+    String.fromCharCode(0), String.fromCharCode(10), String.fromCharCode(13),
+    String.fromCharCode(9), String.fromCharCode(31), String.fromCharCode(127),
+    String.fromCharCode(0x200B), String.fromCharCode(0x202E),
+    String.fromCharCode(0x2066), String.fromCharCode(0xFEFF),
+  ];
+  for (const c of invisible) {
+    assert.ok(bad('x' + c + 'y'), `应拒绝不可见字符 U+${c.codePointAt(0)!.toString(16)}`);
+  }
+  assert.ok(bad(123), '非字符串应被拒');
+  assert.ok(bad({ a: 1 }), '对象应被拒');
+  assert.ok(bad('中'.repeat(101)), '超过 100 字应被拒');
+  assert.ok(ok('中'.repeat(100)), '恰好 100 字应通过');
+  assert.deepEqual(validateEvent({ id: 'e', type: 'a.b', subject: '#42', summary: 's' }), [], '既有标识符零回归');
 });
 
 test('loop: validateRule 校验必填、Agent 登记、cron、tell/access', () => {

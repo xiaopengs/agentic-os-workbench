@@ -6,6 +6,7 @@ import { KpiGrid } from '@/components/dashboard/KpiGrid';
 import { LiveTrace } from '@/components/dashboard/LiveTrace';
 import { RecentWorkflows } from '@/components/dashboard/RecentWorkflows';
 import { ApprovalCards } from '@/components/dashboard/ApprovalCards';
+import { WorkerPanel } from '@/components/dashboard/WorkerPanel';
 import { WorkflowFormModal } from '@/components/modals/WorkflowFormModal';
 import { RunWhyModal } from '@/components/modals/RunWhyModal';
 import { Icon, type IconName } from '@/components/icons/Icon';
@@ -56,8 +57,8 @@ export default function OverviewPage() {
   }
   if (totals && totals.queuedRuns > 0) {
     attention.push({
-      key: 'queued', title: `${totals.queuedRuns} 个轮次排队中`, time: '规则命中后派发，等待执行回执',
-      icon: 'i-play', icoTone: 'g', chipText: '进行中', chipTone: 'info', href: '/workflows',
+      key: 'queued', title: `${totals.queuedRuns} 个轮次排队中`, time: '真实 Agent 执行器会自动领取并执行，无需手动点按钮',
+      icon: 'i-play', icoTone: 'g', chipText: '待执行', chipTone: 'info', href: '/workflows',
     });
   }
   if (totals && totals.hopsBlocked > 0) {
@@ -110,6 +111,8 @@ export default function OverviewPage() {
           <div className="empty-tip">一切就绪 · 点击「接入事件」即可命中规则、派出第一轮并写入事实日志</div>
         )}
       </div>
+
+      <WorkerPanel />
 
       <ApprovalCards cards={state?.cards ?? []} loading={loading} />
 

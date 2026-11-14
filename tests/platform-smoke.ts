@@ -384,6 +384,35 @@ async function main(): Promise<void> {
     `实际 ${audit.status}`);
 
   console.log('\n' + '─'.repeat(52));
+  /* ── subject 可见文字：中文/空格/标点放行，控制字符仍拒（HTTP 真实链路）── */
+  const subjUser = await register('subject');
+  const SH = A(subjUser.token);
+  const ev = (id: string, subject: unknown) => call('POST', '/loop/events', {
+    id, source: 'manual', type: 'note.created', subject,
+  }, SH);
+  const cn = await ev('subj_cn_1', 'Node架构设计');
+  check('中文 subject 接入事件成功', cn.status === 201, `实际 ${cn.status} ${JSON.stringify(cn.body?.error ?? '')}`);
+  const cn2 = await ev('subj_cn_2', '架构设计 方案 v2 / 评审：通过（P0）');
+  check('中文+空格+标点 subject 通过', cn2.status === 201, `实际 ${cn2.status}`);
+  const ident = await ev('subj_ident', 'repo#128');
+  check('既有标识符 subject 零回归', ident.status === 201, `实际 ${ident.status}`);
+  const blank = await ev('subj_blank', '   ');
+  check('纯空白 subject 视为未提供、不报错', blank.status === 201, `实际 ${blank.status}`);
+  const nul = await ev('subj_nul', 'x' + String.fromCharCode(0) + 'y');
+  check('NUL subject → 400（防 lane 结构破坏）', nul.status === 400, `实际 ${nul.status}`);
+  const lf = await ev('subj_lf', 'x' + String.fromCharCode(10) + 'y');
+  check('换行 subject → 400（防提示词注入）', lf.status === 400, `实际 ${lf.status}`);
+  const zwsp = await ev('subj_zwsp', 'x' + String.fromCharCode(0x200B) + 'y');
+  check('零宽字符 subject → 400（防隐藏注入）', zwsp.status === 400, `实际 ${zwsp.status}`);
+  const notStr = await ev('subj_num', 123);
+  check('非字符串 subject → 400', notStr.status === 400, `实际 ${notStr.status}`);
+  const tooLong = await ev('subj_long', '中'.repeat(101));
+  check('超 100 字 subject → 400', tooLong.status === 400, `实际 ${tooLong.status}`);
+  const emitCn = await call('POST', '/loop/emit', {
+    id: 'subj_emit_cn', source: 'github', type: 'issues.opened', subject: 'Node架构设计',
+  }, SH);
+  check('预演 emit 也接受中文 subject', emitCn.status === 200, `实际 ${emitCn.status}`);
+
   console.log(`总计 ${passed + failed} 项，通过 ${passed}，失败 ${failed}`);
   console.log('─'.repeat(52));
   process.exit(failed === 0 ? 0 : 1);

@@ -2,7 +2,7 @@
   "name": "agentic-os-workbench",
   "version": "0.1.0",
   "private": true,
-  "description": "Agentic OS \u81ea\u52a8\u5316\u5f00\u53d1\u5de5\u4f5c\u53f0 \u00b7 \u540c\u4ed3\u5e93\u903b\u8f91\u5206\u79bb\uff08frontend/ + backend/ + shared/\uff09",
+  "description": "Agentic OS 自动化开发工作台 · 同仓库逻辑分离（frontend/ + backend/ + shared/）",
   "scripts": {
     "typecheck:backend": "tsc --noEmit -p backend/tsconfig.json",
     "test:api": "tsx tests/api-smoke.ts",
@@ -18,11 +18,13 @@
     "test:decision-integration": "node tests/decision-loop-integration.mjs",
     "test:unit-boundaries": "tsx --test tests/unit-boundaries.test.ts",
     "test:platform": "tsx tests/platform-smoke.ts",
-    "test:all": "npm run test:api && npm run test:unit-boundaries && npm run test:platform && npm run test:loop-kernel && npm run test:loop-api && npm run test:decision-kernel && npm run test:decision-api && npm run typecheck:backend",
+    "test:all": "npm run test:api && npm run test:unit-boundaries && npm run test:loop-worker && npm run test:platform && npm run test:loop-kernel && npm run test:loop-api && npm run test:decision-kernel && npm run test:decision-api && npm run typecheck:backend",
     "test:loop-ui": "node tests/loop-ui-viewports.mjs",
     "test:e2e": "node tests/e2e.mjs",
     "build:deploy": "node scripts/build-deploy.mjs",
-    "build:app": "node scripts/build-app.mjs"
+    "build:app": "node scripts/build-app.mjs",
+    "test:loop-worker": "tsx --test tests/loop-worker.test.ts",
+    "test:loop-worker-e2e": "node tests/loop-worker-e2e.mjs"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",

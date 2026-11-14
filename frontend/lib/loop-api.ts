@@ -9,6 +9,7 @@ import { emitToast } from './toast-bus';
 import type {
   Fact, LoopCard, LoopEmitResp, LoopEvent, LoopPlugin, LoopPluginToggleResp, LoopPostEventResp,
   LoopRule, LoopRuleCheckResp, LoopRunResultResp, LoopRunsResp, LoopState, LoopWhyResp,
+  LoopWorkerConfig, LoopWorkerRunResp, LoopWorkerStatus,
 } from './loop-types';
 
 /** 外壳注入的固定 now 仅用于演示复现；正常留空由服务端取真实时间 */
@@ -77,6 +78,12 @@ export const loopApi = {
       `/loop/cards/${encodeURIComponent(id)}/resolve`,
       { method: 'POST', body: reason ? { reason } : {} },
     ),
+
+  /* M7 真实 Agent 执行器 */
+  workerStatus: () => request<LoopWorkerStatus>('/loop/worker/status'),
+  workerRun: () => request<LoopWorkerRunResp>('/loop/worker/run', { method: 'POST', body: {} }),
+  workerConfig: (patch: { mode?: 'cli' | 'gateway' | 'off'; maxPerTick?: number; auto?: boolean }) =>
+    request<{ config: LoopWorkerConfig; status: LoopWorkerStatus }>('/loop/worker/config', { method: 'POST', body: patch }),
 
   /* 时钟 / 插件 */
   tick: () => request<{ fired: number; newRuns: number; facts: number[] }>('/loop/tick', { method: 'POST', body: {} }),

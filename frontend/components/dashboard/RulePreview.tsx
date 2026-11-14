@@ -101,8 +101,8 @@ export function RulePreview({ rules }: { rules: LoopRule[] }) {
           </div>
         </div>
 
-        <label htmlFor="pvSubject">事项 subject（可选）</label>
-        <input id="pvSubject" value={subject} onChange={(e) => setSubject(e.target.value)} placeholder="repo#128" />
+        <label htmlFor="pvSubject">事项 subject（可选，支持中文）</label>
+        <input id="pvSubject" value={subject} onChange={(e) => setSubject(e.target.value)} placeholder="如：Node架构设计 或 repo#128" />
 
         <button className="primary-btn" type="submit" disabled={busy !== null}>
           {busy === 'emit' ? '正在预演…' : '预演这条事件（不落库）'}

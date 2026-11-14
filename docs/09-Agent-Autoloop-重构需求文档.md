@@ -413,3 +413,83 @@ autoloop 完整能力折算 **远超 4 个模块**，一次性全量搭建必然
   > **两处方法论坑**：① `LoopState.rules` 是**数组**、`LoopView.rules` 是**对象**，闭环脚本首版误用对象索引，产生 1 个假失败与 3 处「假绿」，已统一改为数组判断后重跑 45/45；② 播种会写入演示用量基线（1 run / 4800 tokens / 36 分），这不是脏数据，测试断言需以基线为起点做相对比较。测试服务用独立端口 3738 + 独立 `.data/store-test-3738.json`，全程不触碰线上 3000 与外网链接。
 
 - **2026-11-14 GitHub 提交（全项目测试加固 + 6 个缺陷修复）**：commit `8a02d863efb22837b566f985723fa8bb2179d9da`（parent `8e2e531f…`，历史连续、非 force），9 文件（3 新增 + 6 修改）。以远端 `8e2e531f` codeload 快照作基线逐文件比对生成精确清单，剔除 `package-lock.json` / `frontend/next-env.d.ts` 规范化与构建产物误报；沿用 `sandbox-github-commit` skill 的 Git Data API 路径（blob → tree → commit → PATCH ref），显式清单隔离凭证，Token 仅单次环境变量注入、不落盘不回显。提交前 dry-run 复核、`.gitignore` 误伤检查（9 路径均不命中 `*token*`，`frontend/styles/tokens.css` 仍在仓库）、项目内凭证残留扫描（0 命中）；提交后独立校验 ref / parent / 9 文件状态分布 / 关键文件内容 / tree 未截断（150 blob），并对 9 个文件做远端内容与本地**逐字节比对**，全部一致。已提醒用户 revoke 该 classic PAT。
+
+- **2026-11-14 缺陷修复 #7（subject 不支持中文文字）**：用户反馈「接入事件」表单里「事项 subject」填中文 `Node架构设计` 被拒，报错「subject 只能是标识符字符（字母数字与 `# . _ : / @ -`）」。定位为**过度约束**：`shared/loop.ts` 的 `SUBJECT_RE = /^[A-Za-z0-9#._:/@-]+$/` 沿用参考系统「会进提示词，必须收窄」的意图，却把「防注入」错做成「只允许 ASCII 标识符」；而当前实现里 subject 并未被裸拼进提示词，真正参与的是 `laneKey()` 的 `group` + NUL + `subject` 拼接与卡片键。
+
+  **正确的安全边界**：注入与结构破坏的载体是**控制字符 / 不可见格式符**，不是中文或空格。故改为「允许任意可见文字，只拒绝危险字符」：
+
+  | 类别 | 处理 |
+  |---|---|
+  | 中文 / 空格 / 标点 / emoji / 既有标识符（`repo#128`） | 放行 |
+  | 空串 / 纯空白 | 视为未提供（trim 后为空），不报错、不写进事实日志 |
+  | C0/C1 控制符 `0x00-0x1F`、`0x7F-0x9F` | 拒绝：NUL 会破坏 lane 的 NUL 分隔，换行可伪造提示词指令行 |
+  | 零宽 / 双向 / 不可见格式符 `0x200B-0x200F`、`0x202A-0x202E`、`0x2060-0x2064`、`0x2066-0x2069`、`0xFEFF` | 拒绝：可藏入不可见指令 |
+  | 非字符串 / 超过 `LIMITS.subject`（100 字） | 拒绝 |
+
+  **改动**：`shared/loop.ts`（正则与注释）、`backend/lib/loop/kernel.ts`（报错文案 + 空白串归一化）、`backend/functions/loop.ts`（新增 `subjectOf()`，统一 `postEvent` / `postEmit` / `runRule` 三处 trim 归一化）、前端 `WorkflowFormModal.tsx` 与 `RulePreview.tsx`（label 标注「支持中文」、placeholder 改为中文示例、提交时过滤空串）。**UI 视觉零改动**（仅文案），既有标识符 subject 完全向后兼容，事实日志结构不变。
+
+  **验证**：`test:all` 8 项（34 / 29 / 104 / 93 / 61 / 51 / 63）全绿；`unit-boundaries` 新增 1 个 test（可见文字 7 例 + 不可见字符 10 例 + 类型/长度边界）、`loop-kernel` 新增 2 条断言、`platform-smoke` 新增 10 条 HTTP 真实链路用例（中文 201、空白 201、NUL/换行/零宽/非字符串/超长 400、emit 预演 200）；前后端 tsc 与 Next 构建 12 页通过；线上重新发布后用中文 subject 实测可提交。
+
+---
+
+## M7 · 真实 Agent 自动执行器（2026-11-14）
+
+### 背景与用户诉求
+
+用户核对参考项目 `KKKKhazix/agent-autoloop` 后指出「没配置大模型入口，是否真能跑起来」。
+核对结论：参考项目**刻意不自带大模型 API**——内核是零依赖确定性状态机（`decide(view,input,now)`），
+由 `worker/` 层 `spawn` 用户本机**已登录的 CLI Agent**（`claude -p` / `codex exec` / `codebuddy -p`），
+凭据与 Token 消耗都算在用户自己账号下。
+
+M1–M6 复刻了内核 + 投影 + 全套 UI，但把「领活 → Agent 干活 → 交回执」这一环做成了
+**手工回执 / 演示按钮**；AI Copilot 线上又是 `LOCAL_AI_MOCK=1` 模拟流。用户要求「真正能自己跑、能用起来」。
+
+### 实现（分层对齐参考系统）
+
+| 文件 | 职责 |
+|---|---|
+| `backend/lib/loop/worker.ts` | 执行器核心：领活 → spawn 真实 Agent → 归一化回执 → 写回内核 |
+| `backend/lib/loop/scheduler.ts` | 常驻调度：轮询所有有 loop 数据的用户，无人点击也自动跑 |
+| `frontend/server.mjs` | 服务启动时挂载调度器，shutdown 时停止 |
+| `backend/functions/loop.ts` + `router.ts` | 3 个端点：`status` / `run` / `config` |
+| `frontend/components/dashboard/WorkerPanel.tsx` | 执行器面板：在线状态、模式切换、立即执行、最近一轮 |
+| `shared/loop.ts` | `LoopWorkerConfig` / `Job` / `Status` / `RunResp` 契约与 API 常量 |
+| `tests/loop-worker.test.ts` / `tests/loop-worker-e2e.mjs` | 10 项单测 + 28 项真实 HTTP 服务 E2E |
+
+**三条真实模型通道**：`cli`（默认，spawn 本机 CLI Agent，无需 API Key）、
+`gateway`（OpenAI 兼容 `/chat/completions`）、`off`（停自动）。用户配置只放行
+`mode` / `maxPerTick` / `auto`，部署方管控 `bin` / `timeoutMs` / `intervalMs`，防前端篡改。
+
+**安全边界（指令数据分离）**：事件正文只写进隔离临时目录的 `context.json`；
+提示词仅含校验过的类型 / 编号 / 规则名 / 资料路径；CLI 以 `--tools Read` +
+`--strict-mcp-config --mcp-config '{}' --setting-sources '' --no-session-persistence`
+只读隔离运行，禁止写文件 / 执行命令 / 联网；模型输出经白名单归一化
+（outcome 白名单、ask 对象升维、options 归一化、长度截断、控制符清洗、emits 类型过滤）后才进事实日志。
+执行记录写 `loop:{uid}:worker`，**不侵入可重放的事实日志**。
+
+### 上线过程中定位并修复的 5 个真实问题
+
+| # | 现象 | 根因 | 修复 |
+|---|---|---|---|
+| 1 | 线上 120s 超时，本地 19.7s | 13 个历史压测 queued 轮次并发起多个 CLI，模型服务拥塞 | 进程级**全局单飞锁** + 调度器每轮全局只跑 1 个 |
+| 2 | 超时轮次反复重试 6 次、持续烧模型 | `failed` 回执让内核退回 `queued`，而 `receipts` 指纹已写入，重试交不同回执被 409 锁死 | **内核 bug 修复**：`run.result` 幂等只在终态生效，重试中允许新回执；worker 超时改交 `cancelled` 不重试 |
+| 3 | 服务内 CLI 挂起十几分钟不返回 | `codebuddy` 是 `#!/usr/bin/env node` 包装，服务进程 PATH 里系统 node 18 在前；且 CLI 继承会话变量后 fork 出 sheetagent MCP 子进程争用挂住 | `resolveCli()` 改用**显式 nvm node v22 + cli.js**；给 CLI **隔离精简环境**（只放行认证必需项、禁 MCP/记忆/会话持久化） |
+| 4 | 一次事件派生出长链轮次 | Agent 自主派生 `issue.followup` → 新轮次 → 又派生 | worker 层 `hops≥2` 直接结案止损（内核 8 跳熔断太慢） |
+| 5 | 前端「演示一次拍板」与真执行器抢轮次 | 演示按钮手工伪造「带 ask 的回执」 | 改为接入事件后交给真 Agent 执行，由 Agent 自己决定是否请求拍板 |
+
+### 验证
+
+- **单元**：`test:all` 8 项全绿（34 / 29 / 104 / 100 / 61 / 51 / 63 + 后端 tsc）；
+  新增 `loop-worker` 10 项（配置边界、用户配置防篡改、回执归一化、控制符清洗、全局单飞、内核版本不漂移）、
+  `loop-kernel` 新增 7 条失败重试断言。
+- **真实 HTTP E2E**：`tests/loop-worker-e2e.mjs` 28/28（登录→状态→事件→真 Agent 执行→
+  溯源时间线→配置切换→幂等空转），真 Agent 单次 16–52s。
+- **线上无人干预闭环**：接入事件后**不点任何按钮**，调度器自动领取 → 真 Agent 执行 →
+  `run_19` / `run_59` / `run_66` 均 `done`、`real=true`，产出 P1/P2 严重度判定与只读排查建议，
+  notice 卡片与 `why` 事实时间线完整；`busy=false`、无悬挂轮次。
+- **部署**：`publish.js --start-cmd` 显式覆盖启动命令，`frontend/.env` 注入配置（被 `.gitignore` 忽略，
+  密钥不入库、不进自启动命令），分享链接不变：
+  `https://a00b3c39736f37990.app.workbuddy.host/?sharecode=Q4ABTA5LR3`
+
+> 已知环境限制：沙箱 4 核 CPU 长期 load 16–20，真实模型单轮偶发需 100–120s，
+> 故线上超时设为 120s。执行器已做单飞 / 超时不重试 / 链式止损，负载恢复后会更快。

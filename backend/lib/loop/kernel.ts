@@ -47,11 +47,17 @@ export function validateEvent(raw: Record<string, unknown>): string[] {
   }
 
   if (raw?.subject !== undefined) {
-    if (typeof raw.subject !== 'string' || !SUBJECT_RE.test(raw.subject)) {
-      issues.push('subject 只能是标识符字符（字母数字与 # . _ : / @ -）');
-    } else if (raw.subject.length > LIMITS.subject) {
-      issues.push(`subject 超过 ${LIMITS.subject} 字符`);
+    if (typeof raw.subject !== 'string') {
+      issues.push('subject 必须是文字');
+    } else if (raw.subject.trim() !== '') {
+      // 允许中文/空格/标点等可见文字，只挡控制字符与不可见格式符（注入载体）
+      if (!SUBJECT_RE.test(raw.subject)) {
+        issues.push('subject 不能包含控制字符或不可见格式符（如换行、零宽字符）');
+      } else if (raw.subject.length > LIMITS.subject) {
+        issues.push(`subject 超过 ${LIMITS.subject} 字符`);
+      }
     }
+    // 纯空白视为未提供：清空输入框不应报错
   }
   if (raw?.link !== undefined) {
     if (typeof raw.link !== 'string' || !/^https?:\/\//i.test(raw.link) || !LINK_RE.test(raw.link)) {
@@ -584,7 +590,11 @@ export function decide(view: LoopView, input: LoopInput, now: string): Fact[] {
       const run = ctx.view.runs[input.id];
       if (!run) break;
       const fingerprint = JSON.stringify(input.receipt);
-      if (ctx.view.receipts[input.id] !== undefined) {
+      // 失败重试中的轮次（failed 回执会把 state 退回 queued 等下次重交）仍允许提交新回执：
+      // 若此时沿用旧指纹做幂等拦截，任何不同内容的重试回执都会被判 409，轮次永久卡在 claimed。
+      // 只有「已终态」的轮次才启用幂等去重。
+      const retrying = run.state === 'queued' || run.state === 'claimed';
+      if (ctx.view.receipts[input.id] !== undefined && !retrying) {
         // 幂等重交：内容相同只确认一次，不同则冲突（外壳据此返回 409）
         if (ctx.view.receipts[input.id] === fingerprint) {
           mk(ctx, 'run.finished', { id: input.id, receipt: input.receipt, duplicate: true }, input.id);

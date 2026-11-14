@@ -96,6 +96,44 @@ JWT_SECRET='<≥32 位随机串>' node --import tsx/esm frontend/server.mjs
 `server.mjs` 会读取 `PORT` 环境变量并绑定 `0.0.0.0`，可直接交给平台发布。
 `build:app` / `build-deploy` 生成自包含部署单元的用法见 [docs/07](./docs/07-本地部署与去平台化.md)。
 
+### 真实 Agent 自动执行器（M7）
+
+事件命中规则后产生的轮次**不需要人工点按钮**：常驻执行器会自动领走，调用真实 Agent
+执行并回写真回执，遇到拿不准的事才发卡片找你拍板，回答后自动续跑。
+
+两种真实模型通道，都不需要项目自带 API Key：
+
+| 模式 | 说明 | 配置 |
+|---|---|---|
+| `cli`（默认） | spawn 本机**已登录**的命令行 Agent（默认 `codebuddy -p`），凭据算在你自己账号下，与参考项目 `agent-autoloop` 的 worker 语义一致 | `LOOP_WORKER_MODE=cli` |
+| `gateway` | 走 OpenAI 兼容 `/chat/completions` | `AI_GATEWAY_API_KEY` / `AI_GATEWAY_BASE_URL` |
+| `off` | 停自动执行（仍可手动「立即执行」） | `LOOP_WORKER_MODE=off` |
+
+常用环境变量（均可写在 `frontend/.env`，该文件被 `.gitignore` 忽略）：
+
+```
+LOOP_WORKER_MODE=cli                    # cli | gateway | off
+LOOP_WORKER_BIN=codebuddy              # 或 CLI 绝对路径
+LOOP_WORKER_INTERVAL_MS=15000           # 自动轮询间隔
+LOOP_WORKER_TIMEOUT_MS=120000           # 单轮 Agent 超时
+LOOP_WORKER_MAX_PER_TICK=1              # 每轮最多执行几个轮次
+LOOP_WORKER_AUTO=1                     # 0 = 关自动轮询
+LOOP_WORKER_DISABLE=1                  # 完全不加载执行器
+```
+
+执行器 API：`GET /api/loop/worker/status`（在线状态 / 累计执行 / 最近一轮）、
+`POST /api/loop/worker/run`（立即跑一轮）、`POST /api/loop/worker/config`
+（切模式 / 自动开关，仅放行 `mode`、`maxPerTick`、`auto` 三个字段）。
+总览页「Agent 执行器」面板可直接操作和查看。
+
+**安全边界**（对齐参考项目「指令数据分离」）：事件正文只写进隔离目录的 `context.json`，
+提示词里只出现校验过的类型 / 编号 / 文件路径；CLI 以 `--tools Read` 只读、`--strict-mcp-config`
+隔离运行，禁止写文件、执行命令、联网；模型输出经严格白名单归一化后才写入事实日志。
+执行记录存独立 key，不侵入可重放的事实日志。
+
+> 注意：AI Copilot 侧栏由 `LOCAL_AI_MOCK` 控制（模拟流），与 Autoloop 执行器是两条独立链路；
+> 执行器走真实 CLI Agent，不受该开关影响。
+
 ---
 
 ## API 契约（当前仍全部可用）
@@ -107,6 +145,13 @@ GET  /api/workflows/:id   PATCH /api/workflows/:id   DELETE /api/workflows/:id
 GET  /api/traces          POST /api/traces
 GET  /api/skills          GET /api/contracts   GET /api/devices
 GET  /api/usage           GET /api/audit       GET /api/health
+GET  /api/loop/healthz     GET  /api/loop/state      GET  /api/loop/facts
+GET  /api/loop/runs        GET  /api/loop/cards       GET  /api/loop/rules
+POST /api/loop/events      POST /api/loop/emit        POST /api/loop/tick
+POST /api/loop/rules       POST /api/loop/rules/check
+POST /api/loop/runs/:id/claim    POST /api/loop/runs/:id/result
+POST /api/loop/cards/:id/answer  POST /api/loop/cards/:id/resolve
+GET  /api/loop/worker/status     POST /api/loop/worker/run    POST /api/loop/worker/config
 POST /api/ai/copilot      ← SSE 流式
 ```
 

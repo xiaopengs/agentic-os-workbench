@@ -244,3 +244,46 @@ export interface LoopRunResultResp {
   derivedRuns: string[];
   facts: number[];
 }
+
+/* ── M7 · 真实 Agent 执行器（镜像 shared/loop.ts）──────────── */
+export type LoopWorkerMode = 'cli' | 'gateway' | 'off';
+export interface LoopWorkerConfig {
+  mode: LoopWorkerMode;
+  maxPerTick: number;
+  timeoutMs: number;
+  auto: boolean;
+  bin: string;
+  intervalMs: number;
+}
+export interface LoopWorkerJob {
+  runId: string;
+  rule: string;
+  agent: string;
+  mode: LoopWorkerMode;
+  status: 'running' | 'done' | 'failed' | 'timeout' | 'skipped';
+  startedAt: string;
+  finishedAt?: string;
+  durationMs?: number;
+  outcome?: string;
+  summary?: string;
+  error?: string;
+  real: boolean;
+  facts: number[];
+}
+export interface LoopWorkerStatus {
+  config: LoopWorkerConfig;
+  busy: boolean;
+  available: boolean;
+  reason: string;
+  totalExecuted: number;
+  lastTickAt?: string;
+  lastJob?: LoopWorkerJob;
+  jobs: LoopWorkerJob[];
+}
+export interface LoopWorkerRunResp {
+  executed: number;
+  queuedBefore: number;
+  queuedAfter: number;
+  jobs: LoopWorkerJob[];
+  busy?: boolean;
+}

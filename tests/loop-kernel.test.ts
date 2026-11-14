@@ -103,7 +103,11 @@ section('③ 指令数据分离（validateEvent 纯函数）');
   check('拒收 to / use / worker', ['to', 'use', 'worker'].every((f) =>
     validateEvent({ id: 'a', type: 'alert.new', [f]: 'x' }).some((m) => m.includes(f))));
   check('合法资料事件通过', validateEvent({ id: 'a', type: 'alert.new', subject: '#42', summary: 's', detail: 'd' }).length === 0);
-  check('subject 含空格/脚本字符被拒', validateEvent({ id: 'a', type: 'alert.new', subject: 'a b;rm' }).length > 0);
+  check('subject 中文/空格/标点可通过', validateEvent({ id: 'a', type: 'alert.new', subject: 'Node架构设计' }).length === 0 &&
+    validateEvent({ id: 'a', type: 'alert.new', subject: 'a b;rm' }).length === 0);
+  check('subject 控制字符/不可见格式符被拒', ['\u0000', '\n', '\u202E', '\u200B'].every((c) =>
+    validateEvent({ id: 'a', type: 'alert.new', subject: 'x' + c + 'y' }).some((m) => m.includes('subject'))));
+  check('subject 空白视为未提供', validateEvent({ id: 'a', type: 'alert.new', subject: '   ' }).length === 0);
   check('link 非 ASCII / 非 http 被拒', validateEvent({ id: 'a', type: 'alert.new', link: 'https://例子.com' }).length > 0 &&
     validateEvent({ id: 'a', type: 'alert.new', link: 'javascript:alert(1)' }).length > 0);
   check('type 非法格式被拒', validateEvent({ id: 'a', type: 'BAD TYPE!' }).length > 0);
@@ -393,6 +397,39 @@ section('⑮ M4 通道级应答身份校验（内核判定 / 名单快照 / 挂�
   check('未带 channel 的卡片 answerers 为空', !card2?.answerers?.length);
   const ownerAns = step(v2, { kind: 'card.answer', id: card2!.id, choice: 0, by: 'anyone@workbench.local' }, T2);
   check('无名单卡片登录本人可答（M3 零回归）', kindsOf(ownerAns.facts, 'card.answered') === 1);
+}
+
+/* ══════════════════════════════════════════════════════════ */
+section('⑫ 失败重试：failed 回执退回 queued 后，重试交不同回执不应被幂等锁死');
+{
+  let v = seeded();
+  const ev = step(v, { kind: 'event', event: { id: 'retry-1', source: 'github', type: 'issues.opened', subject: '#77' } }, T1);
+  v = ev.view;
+  const runId = Object.values(v.runs)[0]?.id ?? '';
+  const claim = step(v, { kind: 'run.claim', id: runId }, T1); v = claim.view;
+
+  // 第一次交 failed → 内核退回 queued 等待重试
+  const failed = step(v, { kind: 'run.result', id: runId, receipt: {
+    outcome: 'failed', summary: 'Agent 超时', notice: [{ title: '执行异常' }],
+  } }, T1); v = failed.view;
+  check('⑫ failed 后轮次退回 queued', v.runs[runId]?.state === 'queued', `实际 ${v.runs[runId]?.state}`);
+  check('⑫ 失败已写入 receipt 指纹', v.receipts[runId] !== undefined);
+
+  // 重试领取 + 交不同内容的成功回执 → 必须能真正结案（修复前会被 409 锁死）
+  const reClaim = step(v, { kind: 'run.claim', id: runId }, T2); v = reClaim.view;
+  const retry = step(v, { kind: 'run.result', id: runId, receipt: { outcome: 'done', summary: '重试成功' } }, T2);
+  v = retry.view;
+  check('⑫ 重试交不同回执产出了新事实', retry.facts.some((f) => f.kind === 'run.finished'));
+  check('⑫ 重试后轮次结案为 done', v.runs[runId]?.state === 'done', `实际 ${v.runs[runId]?.state}`);
+  check('⑫ 重试回执覆盖旧指纹', v.receipts[runId]?.includes('重试成功') === true);
+
+  // 终态幂等仍生效：相同回执重交标 duplicate、不同回执仍 409（外壳据此返回冲突）
+  const dup = step(v, { kind: 'run.result', id: runId, receipt: { outcome: 'done', summary: '重试成功' } }, T2);
+  check('⑫ 终态相同回执重交标记 duplicate', dup.facts.some(
+    (f) => f.kind === 'run.finished' && (f as Extract<Fact, { kind: 'run.finished' }>).duplicate === true,
+  ));
+  const conflictRetry = step(v, { kind: 'run.result', id: runId, receipt: { outcome: 'nothing', summary: '篡改' } }, T2);
+  check('⑫ 终态不同回执重交不产事实（409 保护保留）', conflictRetry.facts.length === 0);
 }
 
 /* ══════════════════════════════════════════════════════════ */

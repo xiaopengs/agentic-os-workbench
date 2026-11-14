@@ -96,6 +96,24 @@ const DEV = process.env.NODE_ENV !== 'production';
 const { default: next } = await import('next');
 const { serveApiRequest } = await import(BACKEND_ENTRY);
 
+/* M7 · 常驻真实 Agent 执行器：把 queued 轮次自动领走并交给本机 CLI Agent 执行。
+   路径按 backend 入口推导，源码态/构建态都能定位到 backend/lib/loop/scheduler.ts。 */
+const BACKEND_ROOT = BACKEND_ENTRY.endsWith(path.join('backend', 'adapter', 'node.ts'))
+  ? BACKEND_ENTRY.slice(0, -path.join('adapter', 'node.ts').length)
+  : path.resolve(HERE, '..', 'backend') + path.sep;
+const SCHEDULER_ENTRY = path.join(BACKEND_ROOT, 'lib', 'loop', 'scheduler.ts');
+let loopScheduler = null;
+if (existsSync(SCHEDULER_ENTRY) && process.env.LOOP_WORKER_DISABLE !== '1') {
+  try {
+    const { startLoopScheduler } = await import(SCHEDULER_ENTRY);
+    loopScheduler = startLoopScheduler(process.env);
+  } catch (err) {
+    console.error('[worker] 自动执行器加载失败（不影响 Web/API）:', err.message);
+  }
+} else if (!existsSync(SCHEDULER_ENTRY)) {
+  console.warn('[worker] 未找到 scheduler.ts，自动执行器未启用');
+}
+
 const app = next({ dev: DEV, dir: NEXT_DIR });
 const handle = app.getRequestHandler();
 
@@ -129,11 +147,13 @@ server.listen(PORT, HOST, () => {
   console.log(
     `  存储驱动 : ${process.env.LOCAL_STORE === 'file' ? '本地文件' : '自动选择'}`,
   );
-  if (process.env.LOCAL_AI_MOCK === '1') console.log('  AI       : 本地模拟流');
+  if (process.env.LOCAL_AI_MOCK === '1') console.log('  AI Copilot: 本地模拟流（Autoloop 执行器走真实 CLI Agent，不受此开关影响）');
+  console.log(`  Worker   : ${loopScheduler ? '常驻自动执行（真实 Agent）' : '未启用'}`);
 });
 
 function shutdown(signal) {
   console.log(`\n[server] 收到 ${signal}，正在关闭 …`);
+  loopScheduler?.stop();
   server.close(() => process.exit(0));
   setTimeout(() => process.exit(0), 3000).unref();
 }

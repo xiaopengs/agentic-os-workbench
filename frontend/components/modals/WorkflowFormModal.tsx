@@ -73,7 +73,12 @@ export function WorkflowFormModal({
     }
     setSubmitting(true);
     try {
-      const res = await loopApi.postEvent({ ...event, id: event.id.trim(), type: event.type.trim() });
+      const res = await loopApi.postEvent({
+        ...event,
+        id: event.id.trim(),
+        type: event.type.trim(),
+        subject: event.subject?.trim() || undefined,
+      });
       loopToast(
         res.duplicate ? '事件重复，已去重' :
         res.hopBlocked ? '跳数超限，已熔断' :
@@ -158,8 +163,8 @@ export function WorkflowFormModal({
               </div>
             </div>
 
-            <label htmlFor="fSubject">事项 subject（可选）</label>
-            <input id="fSubject" value={event.subject ?? ''} onChange={(e) => setEvt('subject', e.target.value)} placeholder="repo#128" />
+            <label htmlFor="fSubject">事项 subject（可选，支持中文）</label>
+            <input id="fSubject" value={event.subject ?? ''} onChange={(e) => setEvt('subject', e.target.value)} placeholder="如：Node架构设计 或 repo#128" />
 
             <label htmlFor="fSummary">摘要（可选）</label>
             <input id="fSummary" value={event.summary ?? ''} onChange={(e) => setEvt('summary', e.target.value)} placeholder="一句话描述" />

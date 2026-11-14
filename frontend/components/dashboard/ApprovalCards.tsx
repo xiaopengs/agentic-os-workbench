@@ -16,18 +16,13 @@ import type { LoopCard } from '@/lib/loop-types';
  * 数据流严格单向：用户点选项/演示 → 调真实 /loop/* API 写事实 → revalidateLoop()
  * 统一失效 → SWR 各自重渲染（不在渲染函数里互调，符合内核 DAG 约束）。
  *
- * 闭环：演示按钮接入事件并交「带 ask 的回执」→ 产出 open 卡片（挂起期间不派新
- * Run、不消耗 Token）→ 点选项 answer → 内核产 card.answered + 新 run.queued 接原
- * 事项续跑 → 卡片转 decided/done，事实日志与 Recent Runs 同步可见。
+ * 闭环：按钮接入一条示例事件后【交给真实 Agent 执行器】领走这一轮，Agent 读资料、
+ * 自己判断是否需要拍板并产出 open 卡片（挂起期间不派新 Run、不消耗 Token）→
+ * 点选项 answer → 内核产 card.answered + 新 run.queued 接原事项续跑 →
+ * 执行器再次真实执行，卡片转 decided/done，事实日志与 Recent Runs 同步可见。
+ *
+ * M7 改动：不再手工伪造「带 ask 的回执」，整条链路由真实 Agent 驱动。
  */
-
-/** 演示用 ask 载荷：一次真实的「Agent 完成分析，请求拍板」 */
-const DEMO_ASK = {
-  title: '是否合并这条修复？',
-  text: 'Agent 已完成 repo#128 的排查并提交修复分支，等待你确认下一步。',
-  options: ['合并到 main', '先放着，稍后再看', '关闭不处理'],
-  recommend: 0,
-};
 
 export function ApprovalCards({
   cards, loading,
@@ -46,33 +41,31 @@ export function ApprovalCards({
     .slice(-3)
     .reverse();
 
-  /** 演示：走真实 API 造出一张待拍板卡片（ask → open，挂起零消耗） */
+  /** 真实闭环：接入示例事件 → 交给真实 Agent 执行器跑完这一轮 → 由 Agent 决定是否请求拍板 */
   async function demo() {
     setBusy(true);
     try {
-      let st = await loopApi.state();
-      let run = (st.runs ?? []).find((r) => r.state === 'queued' || r.state === 'claimed');
-      if (!run) {
-        const ev = await loopApi.postEvent({
-          id: `demo_ask_${Date.now()}`, source: 'github', type: 'issues.opened',
-          subject: 'repo#128', summary: '需要拍板的示例事项',
-        });
-        if (!ev.routed.length) {
-          loopToast('未命中规则，请先在规则页运行一条规则');
-          return;
-        }
-        st = await loopApi.state();
-        run = (st.runs ?? []).find((r) => r.state === 'queued' || r.state === 'claimed');
-      }
-      if (!run) {
-        loopToast('没有可交回执的轮次');
+      const ev = await loopApi.postEvent({
+        id: `real_ask_${Date.now()}`, source: 'github', type: 'issues.opened',
+        subject: '中文事项 · 登录页报错排查',
+        summary: '用户反馈登录页偶发 500，需要判断优先级并给出处理建议；如涉及删数据/重启服务请请求人工拍板。',
+      });
+      if (!ev.routed.length) {
+        loopToast('未命中规则，请先在规则页运行一条规则');
         return;
       }
-      await loopApi.resultRun(run.id, {
-        outcome: 'done', summary: 'Agent 完成分析，请求拍板', ask: [DEMO_ASK],
-      });
+      const res = await loopApi.workerRun();
       await revalidateLoop();
-      loopToast('已生成待拍板卡片 · 挂起期间不派新轮次、不消耗 Token');
+      if (res.busy) {
+        loopToast('已有 Agent 正在执行，稍候刷新即可看到回执（执行器串行工作）');
+      } else if (res.executed > 0) {
+        const j = res.jobs[res.jobs.length - 1];
+        loopToast(j?.real
+          ? `真实 Agent 已执行本轮（${j?.outcome ?? j?.status}）· 若需拍板会自动生成卡片`
+          : '本轮已执行');
+      } else {
+        loopToast('事件已入队 · 执行器正在自动领取，稍候刷新即可看到 Agent 回执');
+      }
     } catch {
       /* api-client 已统一 toast */
     } finally {
@@ -105,9 +98,9 @@ export function ApprovalCards({
         <b>审批卡片台 · Approval</b>
         <span className="sub">挂起零消耗 · 待拍板期间不派新轮次，回答后才续跑</span>
         <span className="head-right">
-          <button className="run-btn" onClick={demo} disabled={busy} style={{ minHeight: 44 }} aria-label="演示一次 Agent 请求拍板">
-            <Icon name="i-bell" size={13} />
-            {busy ? '处理中…' : '演示一次拍板'}
+          <button className="run-btn" onClick={demo} disabled={busy} style={{ minHeight: 44 }} aria-label="接入事件并让真实 Agent 执行一轮">
+            <Icon name="i-bolt" size={13} />
+            {busy ? 'Agent 执行中…' : '真实跑一轮'}
           </button>
         </span>
       </div>
@@ -181,7 +174,7 @@ export function ApprovalCards({
         </div>
       ) : (
         <div className="empty-tip">
-          暂无待拍板卡片 · 点击「演示一次拍板」即可看到 事件 → 派活 → 请求拍板 → 挂起 → 回答续跑 的完整闭环
+          暂无待拍板卡片 · 点击「真实跑一轮」让 Agent 执行，遇到拿不准的事会自动发卡片找你拍板
         </div>
       )}
     </div>
