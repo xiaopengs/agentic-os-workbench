@@ -377,3 +377,37 @@ autoloop 完整能力折算 **远超 4 个模块**，一次性全量搭建必然
   > **分期边界**：文档 08 第 2/3 期（评审流 C1/C2、谱系 A4、时间线 E2、AI 起草 D4、影响面 D3、导出 F1/F2、敏感性 B4）留 M7+，不塞进 M6（规模闸门：一次只补 1 个模块）。
 
 - **2026-11-13 GitHub 提交（M6 架构设计决策面板）**：commit `c4c140254f7c549c358816244470db4585f4b862`（parent `a3fcb5d2…`，历史连续、非 force），20 文件（13 新增 + 7 修改）。以远端 `a3fcb5d2` codeload 快照作基线逐文件比对生成精确清单，剔除 `package-lock.json` / `frontend/next-env.d.ts` / `frontend/tsconfig.tsbuildinfo` 等规范化与构建产物误报；沿用 `sandbox-github-commit` skill 的 Git Data API 路径（blob → tree → commit → PATCH ref），显式清单隔离凭证，Token 仅单次环境变量注入、不落盘不回显。提交前 dry-run 复核、`.gitignore` 误伤检查（20 路径均不命中 `*token*`）、项目内凭证残留扫描（0 命中）；提交后独立校验 ref / parent / 20 文件状态分布 / 关键文件内容 / `frontend/styles/tokens.css` 未被误伤 / tree 未截断（147 blob）。已提醒用户 revoke 该 classic PAT。
+
+- **2026-11-14 全项目测试加固（M6 之后）**：用户要求「继续构建测试用例，完成整个项目的测试，有 bug 随时修复」。既有 11 个测试文件偏 happy path，故补齐 3 个测试文件专攻脏输入 / 边界值 / 跨域闭环，并修复测试暴露的 6 个真实缺陷。**UI 一行未改**，数据向后兼容。
+
+  **新增测试文件**：
+
+  | 文件 | 命令 | 覆盖 | 结果 |
+  |---|---|---|---|
+  | `tests/unit-boundaries.test.ts` | `npm run test:unit-boundaries` | `validate` / `quota` / `shared/decision` / `loop kernel` 校验层纯函数边界：类型混淆、NaN、确定性重放、状态机、加权评分、指令数据分离、规则匹配 | **28 / 0** |
+  | `tests/platform-smoke.ts` | `npm run test:platform` | HTTP 层：CORS 预检与错误响应、认证脏输入与账号枚举、配额 402、workflows/traces 输入边界、decisions 端点校验与编号分配、路由匹配、审计、多租户 | **94 / 0** |
+  | `tests/decision-loop-integration.mjs` | `npm run test:decision-integration`（需 3738 服务） | M6 D1 真实闭环：ADR 接受 → to-rule → rules/check → rules 落库 → 事件命中 → 派轮次 → why 溯源 → 幂等 → 双域隔离 → 插件启停联动 | **45 / 0** |
+
+  `package.json` 新增 `test:unit-boundaries` / `test:platform` / `test:decision-integration` 与聚合脚本 `test:all`（8 项零服务依赖）。
+
+  **测试暴露并修复的 6 个缺陷**：
+
+  | # | 位置 | 缺陷 | 修复 |
+  |---|---|---|---|
+  | 1 | `backend/lib/validate.ts` `assertNumber` | `Number(null)=0` / `Number(true)=1` / `Number([])=0` 被静默当合法数字，脏 body 绕过校验 | 只接受 `number` 与非空白数字字符串，其余 400 |
+  | 2 | `backend/lib/quota.ts` `consume` | `Math.trunc(NaN)` 得 NaN，绕过 `> limit` 判断并写进存储（JSON 里变 null），用量静默失真；`Infinity` 误报 402 | 新增 `normalizeDelta()`，非有限增量一律归 0 |
+  | 3 | `shared/decision.ts` `clampScore` | `Number('')=0` 被钳成 1 分、`Number(true)=1`，凭空造出有效评分 | 空串 / 非数字 / 非有限一律记 0 贡献（不臆造分数） |
+  | 4 | `backend/functions/decisions.ts` `scoreDecision` | `?weights=null` 对 null 取属性抛 TypeError → **500**；数组 / 负权重 / 非数字被放行 | 严格校验「JSON 对象」+ 逐维 0–100 有限数字，异常一律 400 |
+  | 5 | 同上 `createDecision` | 编号只按现存 id 推算 → **删除最大编号后复用旧 ADR 号**；并发创建可撞号互相覆盖 | `decision:{uid}:meta` 记 `maxSeq` + per-uid 串行事务锁，编号单调递增 |
+  | 6 | 同上 `decisionToRule` | 只用决策面板、从未访问总览的用户 loop 视图为空 → `agents=[]` → 草案 `valid:false`，**D1 转执行不可用** | 转执行前幂等 `ensureLoopSeeded`；对已播种用户零写入，决策 CRUD / 评分 / 流转仍零侵入事实日志 |
+
+  **全量验收（全绿）**：
+
+  | 类别 | 结果 |
+  |---|---|
+  | `npm run test:all`（8 项） | 34 / 28 / 94 / 91 / 61 / 51 / 63 全通过 + 后端 tsc 通过 |
+  | 前端 `cd frontend && tsc --noEmit` | 通过 |
+  | 真实服务 e2e（独立 3738 实例） | 并发 30/0 · 审批 37/0 · M4 36/0 · 四视口 102/0 · 决策四视口 46/0 · D1 闭环 45/0 · 老 e2e 22/0 |
+  | 合计 | **新增 167 项 + 既有 573 项 = 740 项断言，0 失败** |
+
+  > **两处方法论坑**：① `LoopState.rules` 是**数组**、`LoopView.rules` 是**对象**，闭环脚本首版误用对象索引，产生 1 个假失败与 3 处「假绿」，已统一改为数组判断后重跑 45/45；② 播种会写入演示用量基线（1 run / 4800 tokens / 36 分），这不是脏数据，测试断言需以基线为起点做相对比较。测试服务用独立端口 3738 + 独立 `.data/store-test-3738.json`，全程不触碰线上 3000 与外网链接。

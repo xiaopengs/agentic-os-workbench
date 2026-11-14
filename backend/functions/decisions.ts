@@ -28,6 +28,7 @@ import { readJsonBody, type ApiCtx } from '../lib/http';
 import { k, listDecisions, type Repo } from '../lib/kv';
 import { badRequest, conflict, notFound, ok } from '../lib/resp';
 import { validateRule } from '../lib/loop/kernel';
+import { ensureLoopSeeded } from '../lib/loop/seed';
 import { readView } from '../lib/loop/store';
 import { assertString, optionalString, assertEnum } from '../lib/validate';
 
@@ -40,7 +41,27 @@ function nowOf(ctx: ApiCtx): string {
 /* ── 独立播种：per-uid 互斥，只在首次访问写一批示例决策 ──── */
 const seeding = new Map<string, Promise<void>>();
 
-interface SeedMeta { seeded: boolean }
+interface SeedMeta {
+  seeded: boolean;
+  /** 历史分配过的最大 ADR 序号。删除决策后不复用编号，保证编号单调递增。 */
+  maxSeq?: number;
+}
+
+/**
+ * 决策域 per-uid 串行锁：编号分配（读现存 id + 读 meta + 写实体 + 写 meta）
+ * 必须原子，否则并发创建会拿到同一个 ADR 号并互相覆盖。
+ * 与 seeding 锁独立：播种先完成，再进入编号事务。
+ */
+const txnQueue = new Map<string, Promise<unknown>>();
+function withDecisionTxn<T>(uid: string, fn: () => Promise<T>): Promise<T> {
+  const prev = txnQueue.get(uid) ?? Promise.resolve();
+  const next = prev.catch(() => undefined).then(fn);
+  txnQueue.set(uid, next);
+  void next.finally(() => {
+    if (txnQueue.get(uid) === next) txnQueue.delete(uid);
+  });
+  return next;
+}
 
 function strArray(v: unknown, field: string, max = 20): string[] {
   if (v === undefined || v === null) return [];
@@ -263,35 +284,43 @@ export async function createDecision(ctx: ApiCtx): Promise<Response> {
   const body = await readJsonBody(ctx.req, ctx.raw);
   const input = normalizeInput(body, false);
 
-  const all = await listDecisions(r, uid);
-  const seq = nextDecisionSeq(all.map((d) => d.id));
-  const id = adrId(seq);
-  if (all.some((d) => d.id === id)) throw conflict(`决策编号已存在：${id}`);
+  // 编号分配串行化：并发创建不撞号；删除最大编号后依据 meta.maxSeq 继续递增，不复用旧 ADR 号。
+  return withDecisionTxn(uid, async () => {
+    const all = await listDecisions(r, uid);
+    const meta = await r.get<SeedMeta>(k.decisionMeta(uid));
+    const seq = Math.max(nextDecisionSeq(all.map((d) => d.id)), (meta?.maxSeq ?? 0) + 1);
+    const id = adrId(seq);
+    if (all.some((d) => d.id === id)) throw conflict(`决策编号已存在：${id}`);
 
-  const decision: Decision = {
-    id, seq,
-    title: input.title as string,
-    status: 'draft',
-    context: input.context ?? '',
-    drivers: input.drivers ?? [],
-    criteria: input.criteria ?? [],
-    options: input.options ?? [],
-    decision: input.decision ?? '',
-    chosenOptionId: input.chosenOptionId,
-    consequences: input.consequences ?? { positive: [], negative: [], risks: [] },
-    confirmation: input.confirmation,
-    owner: input.owner as string,
-    tags: input.tags ?? [],
-    links: [],
-    reviewAt: input.reviewAt,
-    createdAt: now,
-    updatedAt: now,
-    history: [{ at: now, action: 'created', by: email, note: '创建为提议' }],
-  };
+    const decision: Decision = {
+      id, seq,
+      title: input.title as string,
+      status: 'draft',
+      context: input.context ?? '',
+      drivers: input.drivers ?? [],
+      criteria: input.criteria ?? [],
+      options: input.options ?? [],
+      decision: input.decision ?? '',
+      chosenOptionId: input.chosenOptionId,
+      consequences: input.consequences ?? { positive: [], negative: [], risks: [] },
+      confirmation: input.confirmation,
+      owner: input.owner as string,
+      tags: input.tags ?? [],
+      links: [],
+      reviewAt: input.reviewAt,
+      createdAt: now,
+      updatedAt: now,
+      history: [{ at: now, action: 'created', by: email, note: '创建为提议' }],
+    };
 
-  await r.put(k.decision(uid, id), decision);
-  await writeAudit(r, uid, { action: 'decision.create', target: id, actor: email });
-  return ok(decision, { status: 201 });
+    await r.put(k.decision(uid, id), decision);
+    await r.put(k.decisionMeta(uid), {
+      seeded: true,
+      maxSeq: Math.max(meta?.maxSeq ?? 0, seq),
+    } satisfies SeedMeta);
+    await writeAudit(r, uid, { action: 'decision.create', target: id, actor: email });
+    return ok(decision, { status: 201 });
+  });
 }
 
 export async function getDecision(ctx: ApiCtx): Promise<Response> {
@@ -366,11 +395,22 @@ export async function scoreDecision(ctx: ApiCtx): Promise<Response> {
   const weightParam = ctx.query.get('weights');
   let criteria = d.criteria ?? [];
   if (weightParam) {
-    try {
-      const parsed = JSON.parse(weightParam) as Record<string, number>;
-      criteria = criteria.map((c) =>
-        parsed[c.id] !== undefined ? { ...c, weight: Number(parsed[c.id]) || 0 } : c);
-    } catch { throw badRequest('weights 需为 JSON 对象'); }
+    let parsed: unknown;
+    try { parsed = JSON.parse(weightParam); }
+    catch { throw badRequest('weights 需为 JSON 对象'); }
+    // JSON.parse('null') / '[]' 都不是对象：直接取属性会抛 TypeError → 500，必须显式挡住
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      throw badRequest('weights 需为 JSON 对象');
+    }
+    const weights = parsed as Record<string, unknown>;
+    criteria = criteria.map((c) => {
+      if (weights[c.id] === undefined) return c;
+      const n = Number(weights[c.id]);
+      if (!Number.isFinite(n) || n < 0) {
+        throw badRequest(`维度「${c.name}」权重需为 0–100 的数字`);
+      }
+      return { ...c, weight: Math.min(100, n) };
+    });
   }
   const scores = scoreOptions({ criteria, options: d.options ?? [] });
   await writeAudit(r, uid, { action: 'decision.score', target: d.id, actor: 'system' });
@@ -379,11 +419,16 @@ export async function scoreDecision(ctx: ApiCtx): Promise<Response> {
 
 /** D1：生成规则草案 + 复用 loop validateRule 校验；不落库（前端调 /loop/rules 落库） */
 export async function decisionToRule(ctx: ApiCtx): Promise<Response> {
-  const { r, uid, email } = await prepare(ctx);
+  const { r, uid, email, now } = await prepare(ctx);
   const d = await r.get<Decision>(k.decision(uid, ctx.params.id));
   if (!d) throw notFound('决策不存在');
   if (d.status !== 'accepted') throw badRequest('只有「已接受」的决策可以转为执行规则');
   const body = await readJsonBody(ctx.req, ctx.raw);
+  // D1 是决策域 → autoloop 的桥梁：转执行前确保 loop 已按自身规则完成幂等播种。
+  // 只用决策面板、从未访问过总览的用户 loop 视图为空（agents=[]），validateRule 会判
+  // 「to 不是已登记 Agent」→ 草案 valid:false、前端无法落库。对已播种用户幂等跳过，
+  // 不改变事实日志；决策的 CRUD / 评分 / 流转依旧零侵入，只有显式「转执行」才触发初始化。
+  await ensureLoopSeeded(r, uid, now);
   const view = await readView(r, uid);
   const agents = Object.keys(view.plugins.agents ?? {});
   const agent = (body.agent as string) || agents[0] || 'claude';

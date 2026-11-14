@@ -169,8 +169,17 @@ export interface ScoredOption {
 const SCORE_MIN = 1;
 const SCORE_MAX = 5;
 
+/**
+ * 分数归一化：缺失 / 空串 / 非有限 / 非数字一律记 0 贡献（不臆造分数），
+ * 合法分数钳制到 [1,5]。
+ * 注意：Number('') === 0、Number(true) === 1，若不加类型判断会把空串钳成 1 分、
+ * 把布尔当成有效评分，破坏「缺失记 0」的确定性语义。
+ */
 function clampScore(v: unknown): number {
-  const n = typeof v === 'number' ? v : Number(v);
+  let n: number;
+  if (typeof v === 'number') n = v;
+  else if (typeof v === 'string' && v.trim() !== '') n = Number(v);
+  else return 0;
   if (!Number.isFinite(n)) return 0;
   return Math.max(SCORE_MIN, Math.min(SCORE_MAX, n));
 }

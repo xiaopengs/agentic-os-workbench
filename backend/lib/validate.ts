@@ -39,7 +39,13 @@ export function assertNumber(
   field: string,
   options: { min?: number; max?: number; integer?: boolean } = {},
 ): number {
-  const num = typeof value === 'number' ? value : Number(value);
+  // 只接受 number 或非空白字符串：JSON body 里的 null / 布尔 / 数组 / 对象
+  // 会被 Number() 静默转成 0 / 1 / NaN，属于类型混淆，必须显式拒绝而不是放行。
+  // 保留字符串→数字是为了兼容 query 参数与表单输入。
+  let num: number;
+  if (typeof value === 'number') num = value;
+  else if (typeof value === 'string' && value.trim() !== '') num = Number(value);
+  else throw badRequest(`${field} 必须是数字`);
   if (!Number.isFinite(num)) throw badRequest(`${field} 必须是数字`);
   if (options.integer && !Number.isInteger(num)) throw badRequest(`${field} 必须是整数`);
   if (options.min !== undefined && num < options.min) throw badRequest(`${field} 不能小于 ${options.min}`);

@@ -60,6 +60,17 @@ export interface ConsumeDelta {
 }
 
 /**
+ * 把增量收敛为「有限非负整数」。
+ * NaN / Infinity / 脏字符串一律归 0：否则 `Math.trunc(NaN)` 会得到 NaN，
+ * 既绕过 `current + NaN > limit` 的配额判断，又把 NaN 写进存储（JSON 里变 null），
+ * 用量统计从此静默失真。Infinity 也不该让一次误传把正常用户判成 402。
+ */
+function normalizeDelta(value: unknown): number {
+  const n = Number(value ?? 0);
+  return Number.isFinite(n) ? Math.max(0, Math.trunc(n)) : 0;
+}
+
+/**
  * 检查配额并累加用量。
  * 只有 runs 受配额上限约束（tokens / costCents 为计量维度）。
  * 超额时不写入、直接抛 402。
@@ -70,9 +81,9 @@ export async function consume(
   delta: ConsumeDelta = {},
   month = monthKey(),
 ): Promise<Usage> {
-  const runs = Math.max(0, Math.trunc(delta.runs ?? 0));
-  const tokens = Math.max(0, Math.trunc(delta.tokens ?? 0));
-  const costCents = Math.max(0, Math.trunc(delta.costCents ?? 0));
+  const runs = normalizeDelta(delta.runs);
+  const tokens = normalizeDelta(delta.tokens);
+  const costCents = normalizeDelta(delta.costCents);
 
   const current = await getUsage(r, user, month);
   const limit = current.limit;
